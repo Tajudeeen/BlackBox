@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+/*
+  BLACKBOX brand tokens.
+  Primary: black. Accent: yellow. Secondary: light purple.
+  Signature gradient: black -> yellow -> light purple, used sparingly.
+*/
+:root {
+  --bb-black: #07070a;
+  --bb-black-soft: #101014;
+  --bb-yellow: #f5c518;
+  --bb-yellow-dim: #cfa30f;
+  --bb-purple: #cdbfff;
+  --bb-purple-dim: #8f7fd1;
+  --bb-line: #1f1f26;
+  --bb-text: #ededf0;
+  --bb-text-dim: #9a9aa5;
+
+  --background: var(--bb-black);
+  --foreground: var(--bb-text);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-bb-black: var(--bb-black);
+  --color-bb-black-soft: var(--bb-black-soft);
+  --color-bb-yellow: var(--bb-yellow);
+  --color-bb-yellow-dim: var(--bb-yellow-dim);
+  --color-bb-purple: var(--bb-purple);
+  --color-bb-purple-dim: var(--bb-purple-dim);
+  --color-bb-line: var(--bb-line);
+  --color-bb-text: var(--bb-text);
+  --color-bb-text-dim: var(--bb-text-dim);
+  --font-sans: "Space Grotesk", Arial, Helvetica, sans-serif;
+  --font-mono: "Geist Mono", "SFMono-Regular", monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+.bb-gradient-rule {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    var(--bb-black) 0%,
+    var(--bb-yellow) 50%,
+    var(--bb-purple) 100%
+  );
+  opacity: 0.6;
+}

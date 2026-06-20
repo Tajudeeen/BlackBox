@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: blackbox-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: blackbox
+      # Local-dev default. Override with a real secret for anything other
+      # than a machine only you can reach -- this default is committed to
+      # the repo and is not a secret.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-blackbox_dev_only}
+      POSTGRES_DB: blackbox
+    ports:
+      # Bound to localhost only. Do not change this to "5432:5432" (which
+      # binds 0.0.0.0, i.e. every network interface) unless you also set a
+      # real POSTGRES_PASSWORD above and understand the exposure.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - blackbox_postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+
+volumes:
+  blackbox_postgres_data:

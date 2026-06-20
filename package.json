@@ -1,0 +1,17 @@
+{
+  "name": "blackbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BLACKBOX — a confidential prediction market protocol built on Zama FHE",
+  "license": "BSD-3-Clause-Clear",
+  "scripts": {
+    "contracts:compile": "npm --prefix contracts run compile",
+    "contracts:test": "npm --prefix contracts run test",
+    "contracts:node": "npm --prefix contracts run chain",
+    "contracts:deploy:local": "npm --prefix contracts run deploy:localhost",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:build": "npm --prefix backend run build"
+  }
+}
