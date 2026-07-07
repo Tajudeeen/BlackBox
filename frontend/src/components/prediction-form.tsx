@@ -8,16 +8,9 @@ import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagm
 import { BLACKBOX_MARKET_ABI, MARKET_CONTRACT_ADDRESS } from "@/lib/contract";
 import { outcomeLabels } from "@/lib/marketMeta";
 
-// Well within euint64's range (max ~1.8e19) and well within
-// Number.MAX_SAFE_INTEGER (~9.007e15), so every value that passes this
-// check converts to BigInt without floating-point precision loss. Found
-// during the Phase 5 review: without an explicit bound, a large-enough
-// typed amount (e.g. 1e300, still a finite, in-range JS number) would
-// pass the old "is it a positive number" check, convert to a valid but
-// astronomically large BigInt, and only fail -- unclearly, and only after
-// an encryption round trip -- once it actually exceeded what euint64 can
-// hold.
-const MAX_PREDICTION_AMOUNT = 1_000_000_000_000; // one trillion units
+// Well within euint64's range and Number.MAX_SAFE_INTEGER — every value
+// that passes this check converts to BigInt without precision loss.
+const MAX_PREDICTION_AMOUNT = 1_000_000_000_000;
 
 export function PredictionForm({
   marketId,
@@ -48,7 +41,7 @@ export function PredictionForm({
       : !Number.isFinite(parsedAmount) || parsedAmount <= 0
         ? "Enter a positive whole number."
         : parsedAmount > MAX_PREDICTION_AMOUNT
-          ? `Amount must be ${MAX_PREDICTION_AMOUNT.toLocaleString()} or less.`
+          ? `Maximum is ${MAX_PREDICTION_AMOUNT.toLocaleString()} units.`
           : null;
   const amount =
     amountValidationError === null && amountInput.trim() !== "" ? Math.floor(parsedAmount) : null;
@@ -85,18 +78,29 @@ export function PredictionForm({
         ],
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong while submitting your prediction.");
+      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
       setStage("idle");
     }
   };
 
   const isBusy = stage !== "idle" || isWriting || isConfirming;
 
+  const submitLabel = () => {
+    if (stage === "encrypting") return "Encrypting in browser…";
+    if (stage === "submitting" || isWriting) return "Sending transaction…";
+    if (isConfirming) return "Waiting for confirmation…";
+    return "Encrypt and submit";
+  };
+
   return (
     <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
       <h2 className="text-sm font-medium uppercase tracking-wide text-bb-text-dim">Submit a prediction</h2>
+      <p className="mt-1 text-xs text-bb-text-dim">
+        Your choice and amount are encrypted before they leave your browser.
+      </p>
 
-      <div className="mt-4 space-y-2">
+      <p className="mt-4 text-xs uppercase tracking-wide text-bb-text-dim">Pick an outcome</p>
+      <div className="mt-2 space-y-2">
         {labels.map((label, index) => (
           <button
             key={label}
@@ -116,6 +120,7 @@ export function PredictionForm({
 
       <label className="mt-4 block text-xs uppercase tracking-wide text-bb-text-dim">
         Prediction amount
+        <span className="ml-1 normal-case text-bb-text-dim">(units — your private stake in this outcome)</span>
         <input
           type="number"
           min={1}
@@ -124,11 +129,15 @@ export function PredictionForm({
           value={amountInput}
           onChange={(e) => setAmountInput(e.target.value)}
           disabled={isBusy}
-          placeholder="0"
+          placeholder="e.g. 100"
           className="mt-2 w-full rounded-md border border-bb-line bg-bb-black px-4 py-3 text-sm text-bb-text outline-none focus:border-bb-yellow-dim"
         />
       </label>
       {amountValidationError && <p className="mt-2 text-xs text-red-400">{amountValidationError}</p>}
+
+      {!address && (
+        <p className="mt-4 text-xs text-bb-text-dim">Connect your wallet above to submit a prediction.</p>
+      )}
 
       <button
         type="button"
@@ -136,15 +145,12 @@ export function PredictionForm({
         disabled={!address || selectedOutcome === null || amount === null || isBusy}
         className="mt-4 w-full rounded-md bg-bb-yellow px-4 py-3 text-sm font-medium text-bb-black transition-opacity disabled:opacity-40"
       >
-        {stage === "encrypting"
-          ? "Encrypting…"
-          : stage === "submitting" || isWriting || isConfirming
-            ? "Submitting…"
-            : "Encrypt and submit"}
+        {submitLabel()}
       </button>
 
-      {!address && <p className="mt-3 text-xs text-bb-text-dim">Connect your wallet to submit a prediction.</p>}
-      {(error || writeError) && <p className="mt-3 text-xs text-red-400">{error ?? writeError?.message}</p>}
+      {(error || writeError) && (
+        <p className="mt-3 text-xs text-red-400">{error ?? writeError?.message}</p>
+      )}
     </div>
   );
 }

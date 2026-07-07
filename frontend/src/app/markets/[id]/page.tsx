@@ -7,7 +7,7 @@ import { useAccount, useReadContract } from "wagmi";
 import { ClaimPanel } from "@/components/claim-panel";
 import { PredictionForm } from "@/components/prediction-form";
 import { BLACKBOX_MARKET_ABI, MARKET_CONTRACT_ADDRESS } from "@/lib/contract";
-import { outcomeLabel } from "@/lib/marketMeta";
+import { eventTypeLabel, outcomeLabel } from "@/lib/marketMeta";
 import { useCountdown } from "@/lib/useCountdown";
 
 export default function MarketDetailPage() {
@@ -49,7 +49,7 @@ export default function MarketDetailPage() {
   if (!isValidId) {
     return (
       <main className="mx-auto max-w-2xl px-6 py-16">
-        <p className="text-sm text-bb-text-dim">Not a valid market id.</p>
+        <p className="text-sm text-bb-text-dim">That market id is not valid.</p>
       </main>
     );
   }
@@ -62,17 +62,22 @@ export default function MarketDetailPage() {
     );
   }
 
-  if (isLoading || !market) {
+  if (isLoading) {
     return (
-      <main className="mx-auto max-w-2xl px-6 py-16">
-        <p className="text-sm text-bb-text-dim">Loading market…</p>
+      <main className="mx-auto max-w-2xl px-6 py-16 space-y-4">
+        <div className="h-4 w-40 animate-pulse rounded bg-bb-black-soft" />
+        <div className="h-8 w-80 animate-pulse rounded bg-bb-black-soft" />
+        <div className="h-4 w-32 animate-pulse rounded bg-bb-black-soft" />
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-16 animate-pulse rounded-md border border-bb-line bg-bb-black-soft" />
+          ))}
+        </div>
       </main>
     );
   }
 
-  const [exists, resolved, outcomeCount, winningOutcome, , eventType, label] = market;
-
-  if (!exists) {
+  if (!market || !market[0]) {
     return (
       <main className="mx-auto max-w-2xl px-6 py-16">
         <p className="text-sm text-bb-text-dim">This market does not exist.</p>
@@ -80,31 +85,37 @@ export default function MarketDetailPage() {
     );
   }
 
+  const [, resolved, outcomeCount, winningOutcome, , eventType, label] = market;
   const status = resolved ? "Resolved" : countdown.isPast ? "Closed" : "Open";
   const hasSubmitted = position?.[0] ?? false;
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
-      <p className="text-xs uppercase tracking-wide text-bb-text-dim">{eventType}</p>
+      <p className="text-xs uppercase tracking-wide text-bb-text-dim">{eventTypeLabel(eventType)}</p>
       <h1 className="mt-1 text-2xl font-medium text-bb-text">{label}</h1>
       <p className="mt-2 text-sm text-bb-text-dim">
         {status} · {resolved ? "Settled" : countdown.label}
       </p>
 
-      {resolved && <p className="mt-2 text-sm text-bb-yellow">Result: {outcomeLabel(eventType, winningOutcome)}</p>}
+      {resolved && (
+        <p className="mt-2 text-sm text-bb-yellow">
+          Result: {outcomeLabel(eventType, winningOutcome)}
+        </p>
+      )}
 
       {odds && (
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           {odds.map((bps, index) => (
             <div key={index} className="rounded-md border border-bb-line bg-bb-black-soft px-4 py-3">
               <p className="text-sm text-bb-text">{outcomeLabel(eventType, index)}</p>
-              <p className="text-xs text-bb-text-dim">{(bps / 10_000).toFixed(2)}x payout</p>
+              <p className="text-xs text-bb-text-dim">{(Number(bps) / 10_000).toFixed(2)}× payout</p>
             </div>
           ))}
         </div>
       )}
 
       <div className="mt-8 space-y-6">
+        {/* Market is open and user hasn't predicted yet */}
         {!resolved && !hasSubmitted && !countdown.isPast && (
           <PredictionForm
             marketId={marketId}
@@ -114,16 +125,37 @@ export default function MarketDetailPage() {
           />
         )}
 
-        {!resolved && hasSubmitted && (
-          <p className="text-sm text-bb-text-dim">
-            Your prediction is in. Come back once this market resolves to claim privately.
-          </p>
+        {/* Market is open and user already submitted */}
+        {!resolved && hasSubmitted && !countdown.isPast && (
+          <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
+            <p className="text-sm font-medium text-bb-text">Prediction submitted</p>
+            <p className="mt-1 text-xs text-bb-text-dim">
+              Your encrypted prediction is on chain. Come back after the market resolves to claim your outcome.
+            </p>
+          </div>
         )}
 
+        {/* Market closed before user submitted */}
         {!resolved && !hasSubmitted && countdown.isPast && (
-          <p className="text-sm text-bb-text-dim">This market closed without a prediction from you.</p>
+          <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
+            <p className="text-sm font-medium text-bb-text">Market closed</p>
+            <p className="mt-1 text-xs text-bb-text-dim">
+              This market stopped accepting predictions. Check the markets page for open ones.
+            </p>
+          </div>
         )}
 
+        {/* Market closed and user submitted but not yet resolved */}
+        {!resolved && hasSubmitted && countdown.isPast && (
+          <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
+            <p className="text-sm font-medium text-bb-text">Waiting for resolution</p>
+            <p className="mt-1 text-xs text-bb-text-dim">
+              Your prediction is locked in. The simulation engine resolves this market shortly after it closes.
+            </p>
+          </div>
+        )}
+
+        {/* Market resolved — show claim regardless of whether user submitted */}
         {resolved && <ClaimPanel marketId={marketId} />}
       </div>
     </main>

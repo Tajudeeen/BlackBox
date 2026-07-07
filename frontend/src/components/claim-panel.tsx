@@ -43,20 +43,38 @@ export function ClaimPanel({ marketId }: { marketId: bigint }) {
     if (isConfirmed) refetchPosition();
   }, [isConfirmed, refetchPosition]);
 
+  // No wallet connected
+  if (!address) {
+    return (
+      <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
+        <p className="text-sm text-bb-text-dim">Connect your wallet to claim your outcome.</p>
+      </div>
+    );
+  }
+
+  // Wallet connected but no position
   if (!position || !position[0]) {
-    return null; // no position in this market
+    return (
+      <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
+        <p className="text-sm text-bb-text-dim">
+          You did not submit a prediction to this market before it closed.
+        </p>
+      </div>
+    );
   }
 
   const decryptedShare = decrypted && outcomeShareHandle ? decrypted[outcomeShareHandle] : undefined;
+  const shareValue = decryptedShare !== undefined ? BigInt(decryptedShare.toString()) : undefined;
+  const isWin = shareValue !== undefined && shareValue > 0n;
 
   return (
     <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
-      <h2 className="text-sm font-medium uppercase tracking-wide text-bb-text-dim">Your outcome share</h2>
+      <h2 className="text-sm font-medium uppercase tracking-wide text-bb-text-dim">Your outcome</h2>
 
       {!hasClaimed && (
         <>
           <p className="mt-2 text-sm text-bb-text-dim">
-            This market is resolved. Claim to compute your outcome share — only you will be able to decrypt it.
+            The market has resolved. Claim to compute your outcome — only you can decrypt the result.
           </p>
           <button
             type="button"
@@ -72,7 +90,7 @@ export function ClaimPanel({ marketId }: { marketId: bigint }) {
             disabled={isWriting || isConfirming}
             className="mt-4 w-full rounded-md bg-bb-yellow px-4 py-3 text-sm font-medium text-bb-black transition-opacity disabled:opacity-40"
           >
-            {isWriting || isConfirming ? "Claiming…" : "Claim"}
+            {isWriting ? "Sending…" : isConfirming ? "Confirming…" : "Claim"}
           </button>
           {writeError && <p className="mt-3 text-xs text-red-400">{writeError.message}</p>}
         </>
@@ -81,7 +99,7 @@ export function ClaimPanel({ marketId }: { marketId: bigint }) {
       {hasClaimed && !isAllowed && (
         <>
           <p className="mt-2 text-sm text-bb-text-dim">
-            Sign once to authorize decrypting your results from this market. This does not cost gas.
+            Sign with your wallet to authorize decryption. This is a free signature — no gas required.
           </p>
           <button
             type="button"
@@ -89,15 +107,40 @@ export function ClaimPanel({ marketId }: { marketId: bigint }) {
             disabled={isAllowing}
             className="mt-4 w-full rounded-md bg-bb-yellow px-4 py-3 text-sm font-medium text-bb-black transition-opacity disabled:opacity-40"
           >
-            {isAllowing ? "Signing…" : "Authorize decryption"}
+            {isAllowing ? "Waiting for signature…" : "Sign to decrypt"}
           </button>
         </>
       )}
 
       {hasClaimed && isAllowed && (
-        <p className="mt-2 text-2xl font-medium text-bb-text">
-          {isDecrypting ? "Decrypting…" : decryptedShare !== undefined ? decryptedShare.toString() : "—"}
-        </p>
+        <>
+          {isDecrypting && (
+            <p className="mt-3 text-sm text-bb-text-dim">Decrypting your result…</p>
+          )}
+          {!isDecrypting && shareValue === undefined && (
+            <p className="mt-3 text-sm text-bb-text-dim">Decryption pending…</p>
+          )}
+          {!isDecrypting && shareValue !== undefined && (
+            <div className="mt-3">
+              {isWin ? (
+                <>
+                  <p className="text-xs uppercase tracking-wide text-bb-yellow">Your prediction was correct</p>
+                  <p className="mt-1 text-2xl font-medium text-bb-text">{shareValue.toLocaleString()} units</p>
+                  <p className="mt-1 text-xs text-bb-text-dim">
+                    This is your encrypted outcome share — only your wallet can see this number.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs uppercase tracking-wide text-bb-text-dim">Your prediction did not match</p>
+                  <p className="mt-1 text-sm text-bb-text-dim">
+                    Your outcome share is 0. The market resolved to a different outcome.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

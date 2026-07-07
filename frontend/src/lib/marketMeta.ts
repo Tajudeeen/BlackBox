@@ -1,8 +1,6 @@
 /**
  * Outcome labels per market eventType, mirroring
- * backend/src/generators/virtualFootball/market.ts. Hand-maintained for
- * the same reason as lib/contract.ts: the frontend and backend packages
- * have independent dependency trees.
+ * backend/src/generators/virtualFootball/market.ts.
  */
 export const WINNER_EVENT_TYPE = "virtual_football_winner";
 export const OVER_UNDER_EVENT_TYPE = "virtual_football_over_under";
@@ -11,6 +9,16 @@ const OUTCOME_LABELS: Record<string, string[]> = {
   [WINNER_EVENT_TYPE]: ["BLACK FC win", "Draw", "GOLD FC win"],
   [OVER_UNDER_EVENT_TYPE]: ["Under 2.5 goals", "Over 2.5 goals"],
 };
+
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  [WINNER_EVENT_TYPE]: "Virtual Football — Winner",
+  [OVER_UNDER_EVENT_TYPE]: "Virtual Football — Over/Under",
+};
+
+/** Human-readable label for a market's eventType string. */
+export function eventTypeLabel(eventType: string): string {
+  return EVENT_TYPE_LABELS[eventType] ?? eventType;
+}
 
 /** Human-readable label for an outcome index within a given market eventType. */
 export function outcomeLabel(eventType: string, outcomeIndex: number): string {
