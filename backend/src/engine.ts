@@ -2,6 +2,7 @@ import type { FixtureDeps as RunFixtureDeps } from "./fixtures/runFixture.js";
 import { createFixture, PartialFixtureCreationError } from "./fixtures/runFixture.js";
 import { listPendingFixtureIds, getPendingFixture } from "./fixtures/pendingStore.js";
 import { settleFixture, type FixtureDeps as SettleFixtureDeps } from "./fixtures/settleFixture.js";
+import { pickGenerator } from "./generators/registry.js";
 
 export type EngineDeps = RunFixtureDeps & SettleFixtureDeps;
 
@@ -9,72 +10,68 @@ export type EngineOptions = {
   closingInSeconds: number;
 };
 
-/**
- * Set once `createFixture` reports that it orphaned an on-chain market
- * (see `PartialFixtureCreationError`). While set, `tick` will not attempt
- * to create another fixture, so a recurring failure orphans at most one
- * market instead of one per tick forever. Cleared by `resetCreationHalt`,
- * which a fixed/restarted engine process calls implicitly by virtue of
- * this being in-memory module state -- a fresh process starts unhalted.
- */
-let creationHaltedReason: string | null = null;
+// How long to stay halted before auto-recovering and retrying. 10 minutes.
+// This means a transient Sepolia RPC blip that orphaned a market auto-
+// recovers without needing a manual restart. The orphaned market is logged
+// clearly and stays open on-chain but unresolvable by this engine.
+const HALT_AUTO_RECOVER_MS = 10 * 60 * 1000;
+
+let creationHaltedAt: number | null = null;
+
+// Tracks how many fixtures this engine instance has created. Used for the
+// round-robin generator selection. Resets to 0 on restart, which is fine --
+// the rotation picks up from a potentially different spot each deployment,
+// and that variation is harmless.
+let fixtureCount = 0;
 
 export function isCreationHalted(): boolean {
-  return creationHaltedReason !== null;
+  if (creationHaltedAt === null) return false;
+  // Auto-recover after HALT_AUTO_RECOVER_MS.
+  if (Date.now() - creationHaltedAt >= HALT_AUTO_RECOVER_MS) {
+    console.log("[blackbox-backend] halt auto-recovered after timeout -- retrying fixture creation");
+    creationHaltedAt = null;
+    return false;
+  }
+  return true;
 }
 
-export function getCreationHaltReason(): string | null {
-  return creationHaltedReason;
-}
-
-/** Exposed for tests, and for an operator-triggered manual recovery path. */
 export function resetCreationHalt(): void {
-  creationHaltedReason = null;
+  creationHaltedAt = null;
 }
 
-/**
- * Settles every pending fixture whose closing time has already passed, as
- * of `nowSeconds`. Takes the current time explicitly so it can be tested
- * without depending on the real clock.
- */
 export async function settleDueFixtures(deps: EngineDeps, nowSeconds: number): Promise<string[]> {
   const settled: string[] = [];
   for (const fixtureId of listPendingFixtureIds()) {
     const pending = getPendingFixture(fixtureId);
     if (pending && nowSeconds >= pending.closingTime) {
-      await settleFixture(deps, fixtureId);
+      const result = await settleFixture(deps, fixtureId);
+      console.log(`[blackbox-backend] settled fixture ${fixtureId} (${result.generatorName}): ${result.summary}`);
       settled.push(fixtureId);
     }
   }
   return settled;
 }
 
-/**
- * One engine tick: settle anything due, then create a new fixture if there
- * is nothing currently pending. Kept to at most one fixture in flight at a
- * time, by design -- per the Phase 3 brief, "keep simulation simple."
- *
- * Does not attempt to create a fixture while `isCreationHalted()` is true
- * (see that function's documentation) -- this is checked separately from
- * the normal per-tick try/catch in `runEngine` because a halted state
- * needs to persist across ticks, not just be logged and retried like an
- * ordinary transient failure.
- */
 export async function tick(deps: EngineDeps, options: EngineOptions, nowSeconds: number): Promise<void> {
   await settleDueFixtures(deps, nowSeconds);
+
   if (listPendingFixtureIds().length === 0 && !isCreationHalted()) {
+    const generator = pickGenerator(fixtureCount);
     try {
-      const fixture = await createFixture(deps, options.closingInSeconds);
+      const fixture = await createFixture(deps, generator, options.closingInSeconds);
+      fixtureCount += 1;
       console.log(
-        `[blackbox-backend] created fixture ${fixture.fixtureId} (markets ${fixture.contractMarketIds.winner}, ` +
-          `${fixture.contractMarketIds.overUnder}; commitment ${fixture.commitment}; closes ${new Date(
-            fixture.closingTime * 1000,
-          ).toISOString()})`,
+        `[blackbox-backend] created ${fixture.generatorName} fixture ${fixture.fixtureId} ` +
+          `(markets ${fixture.contractMarketIds.join(", ")}; ` +
+          `commitment ${fixture.commitment}; ` +
+          `closes ${new Date(fixture.closingTime * 1000).toISOString()})`,
       );
     } catch (error) {
       if (error instanceof PartialFixtureCreationError) {
-        creationHaltedReason = error.message;
-        console.error(`[blackbox-backend] FIXTURE CREATION HALTED: ${error.message}`);
+        creationHaltedAt = Date.now();
+        console.error(
+          `[blackbox-backend] FIXTURE CREATION HALTED (auto-recovers in ${HALT_AUTO_RECOVER_MS / 60_000}min): ${error.message}`,
+        );
         return;
       }
       throw error;
@@ -82,7 +79,6 @@ export async function tick(deps: EngineDeps, options: EngineOptions, nowSeconds:
   }
 }
 
-/** Runs the engine forever, ticking on the configured poll interval. */
 export async function runEngine(
   deps: EngineDeps,
   options: EngineOptions & { pollIntervalMs: number },

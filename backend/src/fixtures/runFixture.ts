@@ -4,14 +4,7 @@ import type { ChainClient } from "../chain/client.js";
 import type { DbClient } from "../db/types.js";
 import { insertMarket } from "../db/markets.js";
 import { insertSimulationEvent } from "../db/simulationEvents.js";
-import {
-  OVER_UNDER_EVENT_TYPE,
-  OVER_UNDER_LABEL,
-  OVER_UNDER_ODDS_BPS,
-  WINNER_EVENT_TYPE,
-  WINNER_LABEL,
-  WINNER_ODDS_BPS,
-} from "../generators/virtualFootball/market.js";
+import type { Generator } from "../generators/types.js";
 import { commitSeed, generateSeed } from "../generators/virtualFootball/randomness.js";
 import { rememberPendingFixture } from "./pendingStore.js";
 
@@ -22,29 +15,16 @@ export type FixtureDeps = {
 
 export type CreatedFixture = {
   fixtureId: string;
+  generatorName: string;
   commitment: string;
   closingTime: number;
-  contractMarketIds: { winner: bigint; overUnder: bigint };
+  contractMarketIds: bigint[];
 };
 
 /**
  * Thrown when fixture creation fails after at least one on-chain market
- * was already created. Found during the Phase 5 review: the original
- * version of this function only called `rememberPendingFixture` at the
- * very end, after both markets were created and both database rows were
- * written. If anything failed partway -- say the winner market's
- * `createMarket` call succeeded but the over/under market's failed --
- * nothing about the winner market was recorded anywhere. The engine would
- * have no way to know that market existed, so it could never resolve it,
- * and worse, the next tick would see no pending fixture and try to create
- * a brand new one from scratch, repeating the failure and orphaning
- * another market every time it recurred.
- *
- * This type exists so callers (see engine.ts) can distinguish "nothing
- * was created, safe to retry from scratch" from "something was already
- * created on chain, retrying blindly would orphan more of it" and react
- * accordingly -- specifically, by halting automatic fixture creation
- * until an operator has manually accounted for the orphaned market(s).
+ * was already created. The engine catches this, logs the orphaned market
+ * ids, and halts automatic creation to avoid making it worse.
  */
 export class PartialFixtureCreationError extends Error {
   constructor(
@@ -52,88 +32,94 @@ export class PartialFixtureCreationError extends Error {
     cause: unknown,
   ) {
     super(
-      `Fixture creation failed after market id(s) ${orphanedMarketIds.join(", ")} were already created on ` +
-        `chain. This engine has no record of them and will never resolve them on its own. Automatic ` +
-        `fixture creation is now halted to avoid orphaning further markets on repeated failures -- ` +
-        `resolve or otherwise account for the listed market id(s) manually, then restart the engine.`,
+      `Fixture creation failed after market id(s) ${orphanedMarketIds.join(", ")} were already ` +
+        `created on chain. Automatic fixture creation is now halted. Restart the engine to recover.`,
       { cause },
     );
   }
 }
 
 /**
- * Creates one virtual football fixture: commits to a secret seed, creates
- * the Winner and Over/Under markets on chain with a shared closing time,
- * and records the public market metadata and randomness commitment in
- * Postgres. The secret seed itself is kept only in the process-local
- * pending fixture store until `settleFixture` reveals it.
- *
- * If this throws `PartialFixtureCreationError`, see that type's
- * documentation -- at least one market now exists on chain that this
- * engine instance has no record of.
+ * Creates one fixture using the given generator: commits to a secret seed,
+ * creates all markets on chain, and records metadata in Postgres.
  */
-export async function createFixture(deps: FixtureDeps, closingInSeconds: number): Promise<CreatedFixture> {
+export async function createFixture(
+  deps: FixtureDeps,
+  generator: Generator,
+  closingInSeconds: number,
+): Promise<CreatedFixture> {
   const fixtureId = randomUUID();
   const seedHex = generateSeed();
   const commitment = commitSeed(seedHex);
   const closingTime = Math.floor(Date.now() / 1000) + closingInSeconds;
+  const closingDate = new Date(closingTime * 1000);
+  const generatorMarkets = generator.getMarkets();
 
-  const winner = await deps.chain.createMarket(WINNER_EVENT_TYPE, WINNER_LABEL, closingTime, WINNER_ODDS_BPS);
+  const createdOnChain: { marketId: bigint; txHash: string }[] = [];
 
-  let overUnder: { marketId: bigint; txHash: string };
-  try {
-    overUnder = await deps.chain.createMarket(
-      OVER_UNDER_EVENT_TYPE,
-      OVER_UNDER_LABEL,
-      closingTime,
-      OVER_UNDER_ODDS_BPS,
-    );
-  } catch (error) {
-    throw new PartialFixtureCreationError([winner.marketId], error);
+  // Create markets on chain one by one. If any fails, throw with the
+  // ids already created so the engine can halt and log them.
+  for (const market of generatorMarkets) {
+    try {
+      const result = await deps.chain.createMarket(
+        market.eventType,
+        market.label,
+        closingTime,
+        market.oddsBps,
+      );
+      createdOnChain.push(result);
+    } catch (error) {
+      throw new PartialFixtureCreationError(
+        createdOnChain.map((m) => m.marketId),
+        error,
+      );
+    }
   }
 
+  // Write metadata to Postgres. If this fails, all markets exist on chain
+  // but nothing recorded them -- throw with all ids so the engine halts.
   try {
-    const closingDate = new Date(closingTime * 1000);
-    const winnerRowId = await insertMarket(deps.db, {
-      contractMarketId: winner.marketId,
-      eventType: WINNER_EVENT_TYPE,
-      label: WINNER_LABEL,
-      closingTime: closingDate,
-    });
-    const overUnderRowId = await insertMarket(deps.db, {
-      contractMarketId: overUnder.marketId,
-      eventType: OVER_UNDER_EVENT_TYPE,
-      label: OVER_UNDER_LABEL,
-      closingTime: closingDate,
-    });
+    const pendingMarkets: { marketRowId: string; contractMarketId: bigint }[] = [];
 
-    await insertSimulationEvent(deps.db, {
-      marketRowId: winnerRowId,
-      fixtureId,
-      generator: "virtual_football",
-      seedCommitment: commitment,
-    });
-    await insertSimulationEvent(deps.db, {
-      marketRowId: overUnderRowId,
-      fixtureId,
-      generator: "virtual_football",
-      seedCommitment: commitment,
-    });
+    for (let i = 0; i < generatorMarkets.length; i++) {
+      const market = generatorMarkets[i];
+      const onChain = createdOnChain[i];
+
+      const marketRowId = await insertMarket(deps.db, {
+        contractMarketId: onChain.marketId,
+        eventType: market.eventType,
+        label: market.label,
+        closingTime: closingDate,
+      });
+
+      await insertSimulationEvent(deps.db, {
+        marketRowId,
+        fixtureId,
+        generator: generator.name,
+        seedCommitment: commitment,
+      });
+
+      pendingMarkets.push({ marketRowId, contractMarketId: onChain.marketId });
+    }
 
     rememberPendingFixture(fixtureId, {
+      generatorName: generator.name,
       seedHex,
-      marketRowIds: { winner: winnerRowId, overUnder: overUnderRowId },
-      contractMarketIds: { winner: winner.marketId, overUnder: overUnder.marketId },
+      markets: pendingMarkets,
       closingTime,
     });
   } catch (error) {
-    throw new PartialFixtureCreationError([winner.marketId, overUnder.marketId], error);
+    throw new PartialFixtureCreationError(
+      createdOnChain.map((m) => m.marketId),
+      error,
+    );
   }
 
   return {
     fixtureId,
+    generatorName: generator.name,
     commitment,
     closingTime,
-    contractMarketIds: { winner: winner.marketId, overUnder: overUnder.marketId },
+    contractMarketIds: createdOnChain.map((m) => m.marketId),
   };
 }
