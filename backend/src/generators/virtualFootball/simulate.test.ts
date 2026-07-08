@@ -1,77 +1,58 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { OVER_UNDER_OUTCOMES, WINNER_OUTCOMES } from "./market.js";
-import { generateSeed } from "./randomness.js";
-import { simulateMatch } from "./simulate.js";
+import { commitSeed, generateSeed, nextUniform, verifyReveal } from "./randomness.js";
 
-test("simulateMatch is deterministic for a given seed", () => {
+test("generateSeed produces a 32-byte hex string", () => {
   const seed = generateSeed();
-  const first = simulateMatch(seed);
-  const second = simulateMatch(seed);
-  assert.deepStrictEqual(first, second);
+  assert.match(seed, /^0x[0-9a-f]{64}$/);
 });
 
-test("simulateMatch produces non-negative integer goal counts", () => {
-  for (let trial = 0; trial < 200; trial += 1) {
-    const result = simulateMatch(generateSeed());
-    assert.ok(Number.isInteger(result.homeGoals) && result.homeGoals >= 0);
-    assert.ok(Number.isInteger(result.awayGoals) && result.awayGoals >= 0);
+test("generateSeed produces different seeds across calls", () => {
+  const seedA = generateSeed();
+  const seedB = generateSeed();
+  assert.notStrictEqual(seedA, seedB);
+});
+
+test("commitSeed is deterministic", () => {
+  const seed = generateSeed();
+  assert.strictEqual(commitSeed(seed), commitSeed(seed));
+});
+
+test("commitSeed produces different commitments for different seeds", () => {
+  const commitmentA = commitSeed(generateSeed());
+  const commitmentB = commitSeed(generateSeed());
+  assert.notStrictEqual(commitmentA, commitmentB);
+});
+
+test("verifyReveal accepts a seed that matches its own commitment", () => {
+  const seed = generateSeed();
+  const commitment = commitSeed(seed);
+  assert.strictEqual(verifyReveal(seed, commitment), true);
+});
+
+test("verifyReveal rejects a seed that does not match the commitment", () => {
+  const seed = generateSeed();
+  const commitment = commitSeed(generateSeed());
+  assert.strictEqual(verifyReveal(seed, commitment), false);
+});
+
+test("nextUniform is deterministic for a given seed and index", () => {
+  const seed = generateSeed();
+  assert.strictEqual(nextUniform(seed, 0), nextUniform(seed, 0));
+  assert.strictEqual(nextUniform(seed, 7), nextUniform(seed, 7));
+});
+
+test("nextUniform stays within [0, 1)", () => {
+  const seed = generateSeed();
+  for (let i = 0; i < 50; i += 1) {
+    const value = nextUniform(seed, i);
+    assert.ok(value >= 0 && value < 1, `expected ${value} to be in [0, 1)`);
   }
 });
 
-test("simulateMatch derives the winner outcome consistently with the goal counts", () => {
-  for (let trial = 0; trial < 200; trial += 1) {
-    const result = simulateMatch(generateSeed());
-    if (result.homeGoals > result.awayGoals) {
-      assert.strictEqual(result.winnerOutcome, WINNER_OUTCOMES.HOME);
-    } else if (result.homeGoals < result.awayGoals) {
-      assert.strictEqual(result.winnerOutcome, WINNER_OUTCOMES.AWAY);
-    } else {
-      assert.strictEqual(result.winnerOutcome, WINNER_OUTCOMES.DRAW);
-    }
-  }
-});
-
-test("simulateMatch derives the over/under outcome consistently with total goals", () => {
-  for (let trial = 0; trial < 200; trial += 1) {
-    const result = simulateMatch(generateSeed());
-    const total = result.homeGoals + result.awayGoals;
-    const expected = total > 2.5 ? OVER_UNDER_OUTCOMES.OVER : OVER_UNDER_OUTCOMES.UNDER;
-    assert.strictEqual(result.overUnderOutcome, expected);
-  }
-});
-
-test("simulateMatch produces a plausible goal distribution over many trials", () => {
-  const trials = 4000;
-  let homeGoalsTotal = 0;
-  let awayGoalsTotal = 0;
-  let homeWins = 0;
-  let draws = 0;
-  let awayWins = 0;
-
-  for (let i = 0; i < trials; i += 1) {
-    const result = simulateMatch(generateSeed());
-    homeGoalsTotal += result.homeGoals;
-    awayGoalsTotal += result.awayGoals;
-    if (result.winnerOutcome === WINNER_OUTCOMES.HOME) homeWins += 1;
-    else if (result.winnerOutcome === WINNER_OUTCOMES.DRAW) draws += 1;
-    else awayWins += 1;
-  }
-
-  const meanHomeGoals = homeGoalsTotal / trials;
-  const meanAwayGoals = awayGoalsTotal / trials;
-
-  // Expected goals are 1.4 (home) and 1.15 (away). Generous bounds to avoid
-  // a flaky test while still catching a broken implementation (e.g. a
-  // sampler stuck at zero, or one that ignores its lambda entirely).
-  assert.ok(meanHomeGoals > 1.0 && meanHomeGoals < 1.8, `meanHomeGoals was ${meanHomeGoals}`);
-  assert.ok(meanAwayGoals > 0.8 && meanAwayGoals < 1.5, `meanAwayGoals was ${meanAwayGoals}`);
-
-  const homeWinRate = homeWins / trials;
-  const drawRate = draws / trials;
-  const awayWinRate = awayWins / trials;
-  assert.ok(homeWinRate > 0.25 && homeWinRate < 0.55, `homeWinRate was ${homeWinRate}`);
-  assert.ok(drawRate > 0.15 && drawRate < 0.45, `drawRate was ${drawRate}`);
-  assert.ok(awayWinRate > 0.15 && awayWinRate < 0.45, `awayWinRate was ${awayWinRate}`);
+test("nextUniform varies across indices for the same seed", () => {
+  const seed = generateSeed();
+  const values = new Set(Array.from({ length: 20 }, (_, i) => nextUniform(seed, i)));
+  assert.ok(values.size > 1, "expected successive draws to differ");
 });

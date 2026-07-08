@@ -43,16 +43,14 @@ export function ClaimPanel({ marketId }: { marketId: bigint }) {
     if (isConfirmed) refetchPosition();
   }, [isConfirmed, refetchPosition]);
 
-  // No wallet connected
   if (!address) {
     return (
       <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
-        <p className="text-sm text-bb-text-dim">Connect your wallet to claim your outcome.</p>
+        <p className="text-sm text-bb-text-dim">Connect your wallet to check your outcome.</p>
       </div>
     );
   }
 
-  // Wallet connected but no position
   if (!position || !position[0]) {
     return (
       <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
@@ -124,17 +122,17 @@ export function ClaimPanel({ marketId }: { marketId: bigint }) {
             <div className="mt-3">
               {isWin ? (
                 <>
-                  <p className="text-xs uppercase tracking-wide text-bb-yellow">Your prediction was correct</p>
-                  <p className="mt-1 text-2xl font-medium text-bb-text">{shareValue.toLocaleString()} units</p>
+                  <p className="text-xs uppercase tracking-wide text-bb-yellow">Correct prediction</p>
+                  <p className="mt-1 text-3xl font-medium text-bb-text">{shareValue.toLocaleString()}</p>
                   <p className="mt-1 text-xs text-bb-text-dim">
-                    This is your encrypted outcome share — only your wallet can see this number.
+                    Outcome share points · Sepolia testnet only, no real value · Only your wallet can see this number
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="text-xs uppercase tracking-wide text-bb-text-dim">Your prediction did not match</p>
-                  <p className="mt-1 text-sm text-bb-text-dim">
-                    Your outcome share is 0. The market resolved to a different outcome.
+                  <p className="text-xs uppercase tracking-wide text-bb-text-dim">Prediction did not match</p>
+                  <p className="mt-2 text-sm text-bb-text-dim">
+                    Your outcome share is 0. The market resolved to a different outcome than you predicted.
                   </p>
                 </>
               )}

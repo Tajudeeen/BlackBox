@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import type { MarketSummary } from "@/lib/useMarkets";
 import { useCountdown } from "@/lib/useCountdown";
-import { eventTypeLabel } from "@/lib/marketMeta";
+import { eventTypeLabel, eventTypeIcon } from "@/lib/marketMeta";
 
 export function MarketCard({ market }: { market: MarketSummary }) {
   const countdown = useCountdown(market.closingTime);
@@ -19,13 +19,24 @@ export function MarketCard({ market }: { market: MarketSummary }) {
       className="block rounded-md border border-bb-line bg-bb-black-soft p-5 transition-colors hover:border-bb-yellow-dim"
     >
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-bb-text-dim">{eventTypeLabel(market.eventType)}</p>
-          <h3 className="mt-1 text-base font-medium text-bb-text">{market.label}</h3>
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 text-xl" aria-hidden="true">
+            {eventTypeIcon(market.eventType)}
+          </span>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-bb-text-dim">
+              {eventTypeLabel(market.eventType)}
+            </p>
+            <h3 className="mt-1 text-base font-medium text-bb-text">{market.label}</h3>
+          </div>
         </div>
-        <span className={`shrink-0 text-xs font-medium uppercase tracking-wide ${statusColor}`}>{status}</span>
+        <span className={`shrink-0 text-xs font-medium uppercase tracking-wide ${statusColor}`}>
+          {status}
+        </span>
       </div>
-      <p className="mt-3 text-sm text-bb-text-dim">{market.resolved ? "Settled" : countdown.label}</p>
+      <p className="mt-3 text-sm text-bb-text-dim">
+        {market.resolved ? "Settled" : countdown.label}
+      </p>
     </Link>
   );
 }

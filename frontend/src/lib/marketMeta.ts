@@ -1,7 +1,7 @@
 /**
- * Human-readable labels for all market event types, mirroring the
- * backend generators. Add a new entry here whenever a new generator
- * is added to backend/src/generators/registry.ts.
+ * Human-readable labels and display helpers for all market event types.
+ * Add a new entry here whenever a new generator is added to
+ * backend/src/generators/registry.ts.
  */
 
 // ── Virtual Football ────────────────────────────────────────────────────────
@@ -15,36 +15,49 @@ export const DOG_RACE_WINNER_EVENT_TYPE = "dog_race_winner";
 export const HORSE_RACE_WINNER_EVENT_TYPE = "horse_race_winner";
 export const HORSE_RACE_PLACE_EVENT_TYPE = "horse_race_place";
 
-// ── Lookup tables ───────────────────────────────────────────────────────────
+// ── Display labels ──────────────────────────────────────────────────────────
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
-  [WINNER_EVENT_TYPE]: "Virtual Football — Winner",
-  [OVER_UNDER_EVENT_TYPE]: "Virtual Football — Over/Under",
-  [DOG_RACE_WINNER_EVENT_TYPE]: "Virtual Dog Race — Winner",
-  [HORSE_RACE_WINNER_EVENT_TYPE]: "Virtual Horse Race — Winner",
+  [WINNER_EVENT_TYPE]:           "Virtual Football — Winner",
+  [OVER_UNDER_EVENT_TYPE]:       "Virtual Football — Over/Under",
+  [DOG_RACE_WINNER_EVENT_TYPE]:  "Virtual Dog Race — Winner",
+  [HORSE_RACE_WINNER_EVENT_TYPE]:"Virtual Horse Race — Winner",
   [HORSE_RACE_PLACE_EVENT_TYPE]: "Virtual Horse Race — Place",
 };
 
+const EVENT_TYPE_ICONS: Record<string, string> = {
+  [WINNER_EVENT_TYPE]:            "⚽",
+  [OVER_UNDER_EVENT_TYPE]:        "⚽",
+  [DOG_RACE_WINNER_EVENT_TYPE]:   "🐕",
+  [HORSE_RACE_WINNER_EVENT_TYPE]: "🏇",
+  [HORSE_RACE_PLACE_EVENT_TYPE]:  "🏇",
+};
+
 const OUTCOME_LABELS: Record<string, string[]> = {
-  [WINNER_EVENT_TYPE]: ["BLACK FC win", "Draw", "GOLD FC win"],
-  [OVER_UNDER_EVENT_TYPE]: ["Under 2.5 goals", "Over 2.5 goals"],
-  [DOG_RACE_WINNER_EVENT_TYPE]: ["Shadow", "Blaze", "Rocket", "Storm", "Ghost", "Thunder"],
+  [WINNER_EVENT_TYPE]:            ["BLACK FC win", "Draw", "GOLD FC win"],
+  [OVER_UNDER_EVENT_TYPE]:        ["Under 2.5 goals", "Over 2.5 goals"],
+  [DOG_RACE_WINNER_EVENT_TYPE]:   ["Blaze", "Shadow", "Storm", "Rocket", "Ghost", "Thunder"],
   [HORSE_RACE_WINNER_EVENT_TYPE]: [
-    "Iron Duke",
-    "Silver Arrow",
-    "Dark Storm",
     "Golden Flash",
-    "Night Rider",
+    "Silver Arrow",
+    "Iron Duke",
     "Desert Wind",
+    "Dark Storm",
+    "Night Rider",
     "Thunder King",
     "Black Pearl",
   ],
-  [HORSE_RACE_PLACE_EVENT_TYPE]: ["Does not place", "Places (Top 2)"],
+  [HORSE_RACE_PLACE_EVENT_TYPE]:  ["Does not place", "Places (Top 2)"],
 };
 
 /** Human-readable label for a market's eventType string. */
 export function eventTypeLabel(eventType: string): string {
   return EVENT_TYPE_LABELS[eventType] ?? eventType;
+}
+
+/** Emoji icon for a market's eventType. */
+export function eventTypeIcon(eventType: string): string {
+  return EVENT_TYPE_ICONS[eventType] ?? "🎯";
 }
 
 /** Human-readable label for one outcome index within a market. */
