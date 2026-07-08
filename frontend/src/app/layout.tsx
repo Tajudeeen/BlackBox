@@ -6,6 +6,7 @@ import "@fontsource/space-grotesk/500.css";
 import "@fontsource/space-grotesk/700.css";
 import "@fontsource/geist-mono/400.css";
 
+import { Analytics } from "@vercel/analytics/next";
 import { Footer } from "@/components/footer";
 import { Nav } from "@/components/nav";
 import { NetworkBanner } from "@/components/network-banner";
@@ -33,6 +34,7 @@ export default function RootLayout({
           <div className="flex-1">{children}</div>
           <Footer />
         </Providers>
+        <Analytics />
       </body>
     </html>
   );
