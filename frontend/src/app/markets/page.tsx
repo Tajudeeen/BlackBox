@@ -17,18 +17,21 @@ const TABS = [
   {
     id: "football",
     label: "Football",
+    shortLabel: "Football",
     icon: "⚽",
     eventTypes: [WINNER_EVENT_TYPE, OVER_UNDER_EVENT_TYPE],
   },
   {
     id: "dograce",
     label: "Dog Race",
+    shortLabel: "Dogs",
     icon: "🐕",
     eventTypes: [DOG_RACE_WINNER_EVENT_TYPE],
   },
   {
     id: "horserace",
     label: "Horse Race",
+    shortLabel: "Horses",
     icon: "🏇",
     eventTypes: [HORSE_RACE_WINNER_EVENT_TYPE, HORSE_RACE_PLACE_EVENT_TYPE],
   },
@@ -46,9 +49,9 @@ export default function MarketsPage() {
   );
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
+    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-16 lg:max-w-5xl xl:max-w-6xl">
       <div className="space-y-2">
-        <h1 className="text-2xl font-medium text-bb-text">Markets</h1>
+        <h1 className="text-xl font-medium text-bb-text sm:text-2xl">Markets</h1>
         <p className="text-sm text-bb-text-dim">
           Every prediction is encrypted. You can see what a market is about and when it closes — never
           what anyone else predicted, how much they put in, or how the market is leaning.
@@ -56,7 +59,7 @@ export default function MarketsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="mt-8 flex gap-1 rounded-md border border-bb-line bg-bb-black-soft p-1">
+      <div className="mt-6 flex gap-1 rounded-md border border-bb-line bg-bb-black-soft p-1 sm:mt-8">
         {TABS.map((tab) => {
           const count = markets.filter((m) =>
             (tab.eventTypes as readonly string[]).includes(m.eventType),
@@ -67,17 +70,19 @@ export default function MarketsPage() {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-1 items-center justify-center gap-2 rounded px-3 py-2 text-sm transition-colors ${
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-2 text-xs transition-colors sm:gap-2 sm:px-3 sm:text-sm ${
                 isActive
                   ? "bg-bb-black text-bb-text"
                   : "text-bb-text-dim hover:text-bb-text"
               }`}
             >
               <span>{tab.icon}</span>
-              <span className="font-medium">{tab.label}</span>
+              {/* Full label from sm up, shortened label below sm to avoid crowding on narrow phones */}
+              <span className="hidden font-medium sm:inline">{tab.label}</span>
+              <span className="font-medium sm:hidden">{tab.shortLabel}</span>
               {!isLoading && (
                 <span
-                  className={`rounded-full px-1.5 py-0.5 text-xs ${
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] sm:text-xs ${
                     isActive ? "bg-bb-yellow text-bb-black" : "bg-bb-line text-bb-text-dim"
                   }`}
                 >
@@ -90,9 +95,9 @@ export default function MarketsPage() {
       </div>
 
       {/* Content */}
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 space-y-3 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 xl:grid-cols-3">
         {!MARKET_CONTRACT_ADDRESS && (
-          <div className="rounded-md border border-bb-line bg-bb-black-soft p-6 text-center">
+          <div className="rounded-md border border-bb-line bg-bb-black-soft p-6 text-center lg:col-span-full">
             <p className="text-sm font-medium text-bb-text">Contract not configured</p>
             <p className="mt-1 text-xs text-bb-text-dim">
               Set{" "}
@@ -103,18 +108,18 @@ export default function MarketsPage() {
         )}
 
         {MARKET_CONTRACT_ADDRESS && isLoading && (
-          <div className="space-y-3">
+          <>
             {[1, 2].map((i) => (
               <div
                 key={i}
                 className="h-24 animate-pulse rounded-md border border-bb-line bg-bb-black-soft"
               />
             ))}
-          </div>
+          </>
         )}
 
         {MARKET_CONTRACT_ADDRESS && !isLoading && filtered.length === 0 && (
-          <div className="rounded-md border border-bb-line bg-bb-black-soft p-6 text-center">
+          <div className="rounded-md border border-bb-line bg-bb-black-soft p-6 text-center lg:col-span-full">
             <p className="text-lg">{currentTab.icon}</p>
             <p className="mt-2 text-sm font-medium text-bb-text">
               No {currentTab.label} markets yet

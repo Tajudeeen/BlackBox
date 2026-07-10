@@ -22,7 +22,7 @@ export function NetworkBanner() {
   if (!isConnected || chainId === sepolia.id) return null;
 
   return (
-    <div className="border-b border-bb-yellow-dim bg-bb-black-soft px-6 py-3 text-center text-sm text-bb-text">
+    <div className="border-b border-bb-yellow-dim bg-bb-black-soft px-4 py-3 text-center text-xs text-bb-text sm:px-6 sm:text-sm">
       Your wallet is on the wrong network. BLACKBOX runs on Sepolia.{" "}
       <button
         type="button"

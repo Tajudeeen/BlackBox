@@ -70,7 +70,7 @@ export default function MarketDetailPage() {
 
   if (!isValidId) {
     return (
-      <main className="mx-auto max-w-2xl px-6 py-16">
+      <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-16 lg:max-w-3xl">
         <p className="text-sm text-bb-text-dim">That market id is not valid.</p>
       </main>
     );
@@ -78,7 +78,7 @@ export default function MarketDetailPage() {
 
   if (!MARKET_CONTRACT_ADDRESS) {
     return (
-      <main className="mx-auto max-w-2xl px-6 py-16">
+      <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-16 lg:max-w-3xl">
         <p className="text-sm text-bb-text-dim">No market contract is configured.</p>
       </main>
     );
@@ -86,11 +86,11 @@ export default function MarketDetailPage() {
 
   if (isLoading) {
     return (
-      <main className="mx-auto max-w-2xl px-6 py-16 space-y-4">
+      <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-16 lg:max-w-3xl space-y-4">
         <div className="h-4 w-40 animate-pulse rounded bg-bb-black-soft" />
         <div className="h-8 w-80 animate-pulse rounded bg-bb-black-soft" />
         <div className="h-4 w-32 animate-pulse rounded bg-bb-black-soft" />
-        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+        <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-16 animate-pulse rounded-md border border-bb-line bg-bb-black-soft" />
           ))}
@@ -101,7 +101,7 @@ export default function MarketDetailPage() {
 
   if (!market || !market[0]) {
     return (
-      <main className="mx-auto max-w-2xl px-6 py-16">
+      <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-16 lg:max-w-3xl">
         <p className="text-sm text-bb-text-dim">This market does not exist.</p>
       </main>
     );
@@ -112,7 +112,7 @@ export default function MarketDetailPage() {
   const hasSubmitted = position?.[0] ?? false;
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
+    <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-16 lg:max-w-3xl">
       <p className="text-xs uppercase tracking-wide text-bb-text-dim">{eventTypeLabel(eventType)}</p>
       <h1 className="mt-1 text-2xl font-medium text-bb-text">{label}</h1>
       <p className="mt-2 text-sm text-bb-text-dim">
@@ -132,7 +132,7 @@ export default function MarketDetailPage() {
       )}
 
       {odds && (
-        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+        <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {odds.map((bps, index) => (
             <div key={index} className="rounded-md border border-bb-line bg-bb-black-soft px-4 py-3">
               <p className="text-sm text-bb-text">{outcomeLabel(eventType, index)}</p>

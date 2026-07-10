@@ -48,7 +48,7 @@ function PositionRow({ entry }: { entry: PositionEntry }) {
   return (
     <Link
       href={`/markets/${entry.marketId}`}
-      className="flex items-start justify-between gap-4 rounded-md border border-bb-line bg-bb-black-soft px-5 py-4 transition-colors hover:border-bb-yellow-dim"
+      className="flex flex-col gap-2 rounded-md border border-bb-line bg-bb-black-soft px-4 py-3 transition-colors hover:border-bb-yellow-dim sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-5 sm:py-4"
     >
       <div className="flex items-start gap-3 min-w-0">
         <span className="mt-0.5 text-lg shrink-0">{eventTypeIcon(entry.eventType)}</span>
@@ -64,7 +64,7 @@ function PositionRow({ entry }: { entry: PositionEntry }) {
           )}
         </div>
       </div>
-      <div className="shrink-0 text-right space-y-1">
+      <div className="flex shrink-0 items-center gap-2 pl-9 sm:block sm:space-y-1 sm:pl-0 sm:text-right">
         <p className={`text-xs font-medium uppercase tracking-wide ${statusColor}`}>
           {statusLabel}
         </p>
@@ -172,7 +172,7 @@ function PortfolioContent({ address }: { address: string }) {
           <h2 className="text-xs font-medium uppercase tracking-wide text-bb-yellow mb-3">
             Ready to claim ({unclaimed.length})
           </h2>
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {unclaimed.map((p) => (
               <PositionRow key={p.marketId.toString()} entry={p} />
             ))}
@@ -185,7 +185,7 @@ function PortfolioContent({ address }: { address: string }) {
           <h2 className="text-xs font-medium uppercase tracking-wide text-bb-text-dim mb-3">
             Active positions ({pending.length})
           </h2>
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {pending.map((p) => (
               <PositionRow key={p.marketId.toString()} entry={p} />
             ))}
@@ -198,7 +198,7 @@ function PortfolioContent({ address }: { address: string }) {
           <h2 className="text-xs font-medium uppercase tracking-wide text-bb-text-dim mb-3">
             History ({history.length})
           </h2>
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {history.map((p) => (
               <PositionRow key={p.marketId.toString()} entry={p} />
             ))}
@@ -213,7 +213,7 @@ export default function PortfolioPage() {
   const { address, isConnected } = useAccount();
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
+    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-16 lg:max-w-5xl xl:max-w-6xl">
       <div className="space-y-1">
         <h1 className="text-2xl font-medium text-bb-text">Portfolio</h1>
         <p className="text-sm text-bb-text-dim">

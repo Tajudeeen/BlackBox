@@ -2,13 +2,13 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-24">
+    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-12 sm:gap-8 sm:px-6 sm:py-16 md:py-20 lg:max-w-4xl lg:py-24 xl:max-w-5xl">
       <div className="space-y-3">
         <p className="text-xs uppercase tracking-[0.2em] text-bb-yellow">Zama FHE Developer Program</p>
-        <h1 className="text-4xl font-medium tracking-tight text-bb-text sm:text-5xl">
+        <h1 className="text-3xl font-medium tracking-tight text-bb-text sm:text-4xl md:text-5xl lg:text-6xl">
           The first confidential prediction market powered by FHE.
         </h1>
-        <p className="max-w-xl text-bb-text-dim">
+        <p className="max-w-xl text-sm text-bb-text-dim sm:text-base">
           BLACKBOX keeps every position private. Your prediction, your amount, and your outcome stay
           encrypted — visible only to you, never to other participants, never to the chain.
         </p>
@@ -16,10 +16,10 @@ export default function Home() {
 
       <div className="bb-gradient-rule" />
 
-      <div className="flex flex-wrap gap-4">
+      <div className="flex flex-wrap gap-3 sm:gap-4">
         <Link
           href="/markets"
-          className="rounded-md bg-bb-yellow px-5 py-3 text-sm font-medium text-bb-black transition-opacity hover:opacity-90"
+          className="rounded-md bg-bb-yellow px-4 py-2.5 text-sm font-medium text-bb-black transition-opacity hover:opacity-90 sm:px-5 sm:py-3"
         >
           View open markets
         </Link>
@@ -27,13 +27,13 @@ export default function Home() {
           href="https://docs.zama.ai"
           target="_blank"
           rel="noopener noreferrer"
-          className="rounded-md border border-bb-line px-5 py-3 text-sm text-bb-text-dim transition-colors hover:border-bb-yellow-dim hover:text-bb-text"
+          className="rounded-md border border-bb-line px-4 py-2.5 text-sm text-bb-text-dim transition-colors hover:border-bb-yellow-dim hover:text-bb-text sm:px-5 sm:py-3"
         >
           How Zama FHE works
         </Link>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
         <StepCard
           step="1"
           title="Connect your wallet"
@@ -52,7 +52,7 @@ export default function Home() {
       </div>
 
       <div className="rounded-md border border-bb-line bg-bb-black-soft p-4">
-        <p className="text-xs text-bb-text-dim">
+        <p className="text-xs text-bb-text-dim sm:text-sm">
           <span className="font-medium text-bb-text">How it works under the hood:</span> predictions go on
           chain as ciphertext. The contract runs settlement logic directly on encrypted values using Zama
           FHE — no trusted intermediary decrypts anything to compute your payout.

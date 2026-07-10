@@ -16,18 +16,18 @@ export function MarketCard({ market }: { market: MarketSummary }) {
   return (
     <Link
       href={`/markets/${market.marketId}`}
-      className="block rounded-md border border-bb-line bg-bb-black-soft p-5 transition-colors hover:border-bb-yellow-dim"
+      className="block rounded-md border border-bb-line bg-bb-black-soft p-4 transition-colors hover:border-bb-yellow-dim sm:p-5"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 text-xl" aria-hidden="true">
+      <div className="flex items-start justify-between gap-3 sm:gap-4">
+        <div className="flex min-w-0 items-start gap-2.5 sm:gap-3">
+          <span className="mt-0.5 shrink-0 text-lg sm:text-xl" aria-hidden="true">
             {eventTypeIcon(market.eventType)}
           </span>
-          <div>
+          <div className="min-w-0">
             <p className="text-xs uppercase tracking-wide text-bb-text-dim">
               {eventTypeLabel(market.eventType)}
             </p>
-            <h3 className="mt-1 text-base font-medium text-bb-text">{market.label}</h3>
+            <h3 className="mt-1 text-sm font-medium text-bb-text sm:text-base">{market.label}</h3>
           </div>
         </div>
         <span className={`shrink-0 text-xs font-medium uppercase tracking-wide ${statusColor}`}>

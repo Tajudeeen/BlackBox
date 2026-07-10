@@ -100,14 +100,14 @@ export function PredictionForm({
       </p>
 
       <p className="mt-4 text-xs uppercase tracking-wide text-bb-text-dim">Pick an outcome</p>
-      <div className="mt-2 space-y-2">
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
         {labels.map((label, index) => (
           <button
             key={label}
             type="button"
             onClick={() => setSelectedOutcome(index)}
             disabled={isBusy}
-            className={`block w-full rounded-md border px-4 py-3 text-left text-sm transition-colors ${
+            className={`w-full rounded-md border px-4 py-3 text-left text-sm transition-colors ${
               selectedOutcome === index
                 ? "border-bb-yellow text-bb-text"
                 : "border-bb-line text-bb-text-dim hover:border-bb-yellow-dim"
@@ -120,7 +120,9 @@ export function PredictionForm({
 
       <label className="mt-4 block text-xs uppercase tracking-wide text-bb-text-dim">
         Prediction amount
-        <span className="ml-1 normal-case text-bb-text-dim">(units — your private stake in this outcome)</span>
+        <span className="mt-0.5 block normal-case text-bb-text-dim">
+          Units — your private stake in this outcome
+        </span>
         <input
           type="number"
           min={1}
