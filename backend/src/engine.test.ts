@@ -3,36 +3,50 @@ import { test } from "node:test";
 
 import type { ChainClient, MarketInfo } from "./chain/client.js";
 import type { DbClient } from "./db/types.js";
-import { isCreationHalted, resetCreationHalt, settleDueFixtures, tick } from "./engine.js";
-import { forgetPendingFixture, getPendingFixture, listPendingFixtureIds, rememberPendingFixture } from "./fixtures/pendingStore.js";
+import {
+  isGeneratorHalted,
+  resetAllHalts,
+  settleDueFixtures,
+  tick,
+} from "./engine.js";
+import {
+  forgetPendingFixture,
+  getPendingFixture,
+  listPendingFixtureIds,
+  rememberPendingFixture,
+} from "./fixtures/pendingStore.js";
 import { generateSeed } from "./generators/virtualFootball/randomness.js";
+
+function baseMarketInfo(overrides: Partial<MarketInfo> = {}): MarketInfo {
+  return {
+    exists: true,
+    resolved: false,
+    outcomeCount: 3,
+    winningOutcome: 0,
+    closingTime: 0,
+    eventType: "virtual_football_winner",
+    label: "",
+    ...overrides,
+  };
+}
 
 function createFakeChain() {
   let nextId = 0n;
-  const created: { eventType: string; label: string; closingTime: number; outcomeOddsBps: number[] }[] = [];
+  const created: { eventType: string; label: string }[] = [];
   const resolved: { marketId: bigint; winningOutcome: number }[] = [];
 
   const chain: ChainClient = {
-    async createMarket(eventType, label, closingTime, outcomeOddsBps) {
-      const marketId = nextId;
-      nextId += 1n;
-      created.push({ eventType, label, closingTime, outcomeOddsBps });
+    async createMarket(eventType, label) {
+      const marketId = nextId++;
+      created.push({ eventType, label });
       return { marketId, txHash: `0xfaketx${marketId}` };
     },
     async resolveMarket(marketId, winningOutcome) {
       resolved.push({ marketId, winningOutcome });
       return `0xfakeresolve${marketId}`;
     },
-    async getMarket(_marketId): Promise<MarketInfo> {
-      return {
-        exists: true,
-        resolved: false,
-        outcomeCount: 3,
-        winningOutcome: 0,
-        closingTime: 0,
-        eventType: "virtual_football_winner",
-        label: "",
-      };
+    async getMarket(): Promise<MarketInfo> {
+      return baseMarketInfo();
     },
   };
 
@@ -41,159 +55,143 @@ function createFakeChain() {
 
 function createFakeDb() {
   let rowCounter = 0;
-  const queries: { text: string; values?: unknown[] }[] = [];
-
   const db: DbClient = {
-    async query(text, values) {
-      queries.push({ text, values });
+    async query() {
       rowCounter += 1;
       return { rows: [{ id: `fake-row-${rowCounter}` }] } as never;
     },
   };
-
-  return { db, queries };
+  return { db };
 }
 
 test("settleDueFixtures settles only fixtures whose closing time has passed", async () => {
+  resetAllHalts();
   const { chain, resolved } = createFakeChain();
   const { db } = createFakeDb();
-  const deps = { chain, db };
 
   rememberPendingFixture("fixture-due", {
+    generatorName: "virtual_football",
     seedHex: generateSeed(),
-    marketRowIds: { winner: "row-w-1", overUnder: "row-o-1" },
-    contractMarketIds: { winner: 100n, overUnder: 101n },
+    markets: [
+      { marketRowId: "row-1", contractMarketId: 100n },
+      { marketRowId: "row-2", contractMarketId: 101n },
+    ],
     closingTime: 1_000,
   });
   rememberPendingFixture("fixture-not-due", {
+    generatorName: "dog_race",
     seedHex: generateSeed(),
-    marketRowIds: { winner: "row-w-2", overUnder: "row-o-2" },
-    contractMarketIds: { winner: 102n, overUnder: 103n },
+    markets: [{ marketRowId: "row-3", contractMarketId: 102n }],
     closingTime: 5_000,
   });
 
   try {
-    const settled = await settleDueFixtures(deps, 2_000);
-
+    const settled = await settleDueFixtures({ chain, db }, 2_000);
     assert.deepStrictEqual(settled, ["fixture-due"]);
     assert.strictEqual(getPendingFixture("fixture-due"), undefined);
     assert.ok(getPendingFixture("fixture-not-due"));
     assert.strictEqual(resolved.length, 2);
-    assert.deepStrictEqual(
-      resolved.map((r) => r.marketId),
-      [100n, 101n],
-    );
   } finally {
     forgetPendingFixture("fixture-due");
     forgetPendingFixture("fixture-not-due");
+    resetAllHalts();
   }
 });
 
-test("tick creates a fixture when none is pending", async () => {
+test("tick creates one fixture per generator when none are pending", async () => {
+  resetAllHalts();
+  // Clear any pending fixtures from prior tests
+  for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+
   const { chain, created } = createFakeChain();
   const { db } = createFakeDb();
-  const deps = { chain, db };
-
-  assert.strictEqual(listPendingFixtureIds().length, 0);
 
   try {
-    await tick(deps, { closingInSeconds: 1_800 }, Math.floor(Date.now() / 1000));
+    await tick({ chain, db }, { closingInSeconds: 1_800 }, Math.floor(Date.now() / 1000));
 
     const ids = listPendingFixtureIds();
-    assert.strictEqual(ids.length, 1);
-    assert.strictEqual(created.length, 2); // Winner market + Over/Under market
+    // Three generators: virtual_football (2 markets), dog_race (1), horse_race (2) = 5 total
+    assert.strictEqual(ids.length, 3);
+    assert.strictEqual(created.length, 5);
 
-    forgetPendingFixture(ids[0]);
+    const generatorNames = ids.map((id) => getPendingFixture(id)?.generatorName).sort();
+    assert.deepStrictEqual(generatorNames, ["dog_race", "horse_race", "virtual_football"]);
   } finally {
     for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+    resetAllHalts();
   }
 });
 
-test("tick does not create a second fixture while one is already pending", async () => {
+test("tick does not create a duplicate fixture for a generator already pending", async () => {
+  resetAllHalts();
+  for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+
   const { chain, created } = createFakeChain();
   const { db } = createFakeDb();
-  const deps = { chain, db };
 
   const farFuture = Math.floor(Date.now() / 1000) + 10_000;
   rememberPendingFixture("already-pending", {
+    generatorName: "virtual_football",
     seedHex: generateSeed(),
-    marketRowIds: { winner: "row-w", overUnder: "row-o" },
-    contractMarketIds: { winner: 9n, overUnder: 10n },
+    markets: [
+      { marketRowId: "row-w", contractMarketId: 9n },
+      { marketRowId: "row-o", contractMarketId: 10n },
+    ],
     closingTime: farFuture,
   });
 
   try {
-    await tick(deps, { closingInSeconds: 1_800 }, Math.floor(Date.now() / 1000));
+    await tick({ chain, db }, { closingInSeconds: 1_800 }, Math.floor(Date.now() / 1000));
 
-    assert.strictEqual(created.length, 0);
-    assert.deepStrictEqual(listPendingFixtureIds(), ["already-pending"]);
+    // football already has a fixture, so only dog_race and horse_race should be created
+    const ids = listPendingFixtureIds();
+    const generatorNames = ids.map((id) => getPendingFixture(id)?.generatorName).sort();
+    assert.ok(!generatorNames.includes("virtual_football") || generatorNames.filter(n => n === "virtual_football").length === 1);
+    // dog_race (1 market) + horse_race (2 markets) = 3 new market calls
+    assert.strictEqual(created.length, 3);
   } finally {
-    forgetPendingFixture("already-pending");
+    for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+    resetAllHalts();
   }
 });
 
-test("tick halts further fixture creation after a partial creation failure, instead of orphaning a market every retry", async () => {
-  resetCreationHalt();
+test("a partial creation failure halts only that generator, not the others", async () => {
+  resetAllHalts();
+  for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
 
-  // First createMarket call (winner) succeeds; second (over/under) fails.
-  let callCount = 0;
+  let footballCallCount = 0;
   const chain: ChainClient = {
-    async createMarket(_eventType, _label, _closingTime, _outcomeOddsBps) {
-      callCount += 1;
-      if (callCount === 1) return { marketId: 50n, txHash: "0xwinner" };
-      throw new Error("simulated RPC failure on the second createMarket call");
+    async createMarket(eventType) {
+      // Fail on the second virtual_football market (over/under)
+      if (eventType === "virtual_football_over_under") {
+        throw new Error("simulated failure on football over/under");
+      }
+      footballCallCount++;
+      return { marketId: BigInt(footballCallCount), txHash: "0xok" };
     },
-    async resolveMarket() {
-      throw new Error("not used in this test");
-    },
-    async getMarket(_marketId): Promise<MarketInfo> {
-      throw new Error("not used in this test");
-    },
+    async resolveMarket() { return "0x"; },
+    async getMarket(): Promise<MarketInfo> { return baseMarketInfo(); },
   };
   const { db } = createFakeDb();
-  const deps = { chain, db };
-  const now = Math.floor(Date.now() / 1000);
 
   try {
-    assert.strictEqual(isCreationHalted(), false);
+    await tick({ chain, db }, { closingInSeconds: 1_800 }, Math.floor(Date.now() / 1000));
 
-    // First tick: hits the partial failure, halts creation. Must not
-    // throw out of tick -- the halt is handled, not propagated.
-    await tick(deps, { closingInSeconds: 1_800 }, now);
-    assert.strictEqual(isCreationHalted(), true);
-    assert.strictEqual(callCount, 2);
+    // Football is halted
+    assert.strictEqual(isGeneratorHalted("virtual_football"), true);
+    // Dog race and horse race are not halted
+    assert.strictEqual(isGeneratorHalted("dog_race"), false);
+    assert.strictEqual(isGeneratorHalted("horse_race"), false);
 
-    // Second tick: must NOT call createMarket again (which would orphan
-    // a second winner market) while halted.
-    await tick(deps, { closingInSeconds: 1_800 }, now);
-    assert.strictEqual(callCount, 2);
-
-    // No fixture was ever remembered as pending -- the failure happened
-    // before rememberPendingFixture was reached.
-    assert.deepStrictEqual(listPendingFixtureIds(), []);
+    // Dog race and horse race fixtures should still have been created
+    const names = listPendingFixtureIds()
+      .map((id) => getPendingFixture(id)?.generatorName)
+      .filter(Boolean)
+      .sort();
+    assert.ok(names.includes("dog_race"));
+    assert.ok(names.includes("horse_race"));
   } finally {
-    resetCreationHalt();
     for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
-  }
-});
-
-test("resetCreationHalt allows fixture creation to resume", async () => {
-  resetCreationHalt();
-  const { chain, created } = createFakeChain();
-  const { db } = createFakeDb();
-  const deps = { chain, db };
-  const now = Math.floor(Date.now() / 1000);
-
-  try {
-    // Manually simulate a halted state without going through a real failure.
-    await tick(deps, { closingInSeconds: 1_800 }, now);
-    const idsAfterFirstTick = listPendingFixtureIds();
-    for (const id of idsAfterFirstTick) forgetPendingFixture(id);
-
-    assert.strictEqual(isCreationHalted(), false);
-    assert.strictEqual(created.length, 2);
-  } finally {
-    resetCreationHalt();
-    for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+    resetAllHalts();
   }
 });

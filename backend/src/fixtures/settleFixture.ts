@@ -17,9 +17,11 @@ export type SettledFixture = {
 };
 
 /**
- * Settles a pending fixture. Idempotent -- checks each market's on-chain
- * resolved status before calling resolveMarket, so it's safe to retry
- * after a partial failure without hitting MarketAlreadyResolved.
+ * Settles a pending fixture. Idempotent and parallel — checks each
+ * market's on-chain resolved status, then resolves all unresolved markets
+ * concurrently instead of sequentially. On Sepolia this cuts settlement
+ * time from (N × confirmation_time) down to ~1 confirmation time for a
+ * fixture with N markets.
  */
 export async function settleFixture(deps: FixtureDeps, fixtureId: string): Promise<SettledFixture> {
   const pending = getPendingFixture(fixtureId);
@@ -37,15 +39,21 @@ export async function settleFixture(deps: FixtureDeps, fixtureId: string): Promi
     );
   }
 
-  // Resolve each market. Skip ones already resolved (idempotency).
-  for (let i = 0; i < pending.markets.length; i++) {
-    const market = pending.markets[i];
-    const winningOutcome = result.outcomes[i];
-    const onChainInfo = await deps.chain.getMarket(market.contractMarketId);
-    if (!onChainInfo.resolved) {
-      await deps.chain.resolveMarket(market.contractMarketId, winningOutcome);
-    }
-  }
+  // Check on-chain status for all markets simultaneously
+  const onChainStatuses = await Promise.all(
+    pending.markets.map((m) => deps.chain.getMarket(m.contractMarketId)),
+  );
+
+  // Resolve all unresolved markets concurrently — no need to wait for one
+  // before starting the next, since they are independent transactions
+  await Promise.all(
+    pending.markets.map((market, i) => {
+      if (!onChainStatuses[i].resolved) {
+        return deps.chain.resolveMarket(market.contractMarketId, result.outcomes[i]);
+      }
+      return Promise.resolve();
+    }),
+  );
 
   await revealSimulationEvent(deps.db, {
     fixtureId,
@@ -53,9 +61,9 @@ export async function settleFixture(deps: FixtureDeps, fixtureId: string): Promi
     outcomeSummary: result.summary,
   });
 
-  for (const market of pending.markets) {
-    await markMarketSettled(deps.db, market.marketRowId);
-  }
+  await Promise.all(
+    pending.markets.map((market) => markMarketSettled(deps.db, market.marketRowId)),
+  );
 
   forgetPendingFixture(fixtureId);
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useAccount, useReadContract } from "wagmi";
 
 import { ClaimPanel } from "@/components/claim-panel";
@@ -10,13 +10,21 @@ import { BLACKBOX_MARKET_ABI, MARKET_CONTRACT_ADDRESS } from "@/lib/contract";
 import { eventTypeLabel, outcomeLabel } from "@/lib/marketMeta";
 import { useCountdown } from "@/lib/useCountdown";
 
+// How often to poll for resolution when a market is closed but not yet resolved.
+// Sepolia block time is ~12s so polling every 10s catches it within one block.
+const RESOLUTION_POLL_MS = 10_000;
+
 export default function MarketDetailPage() {
   const params = useParams<{ id: string }>();
   const isValidId = /^\d+$/.test(params.id);
   const marketId = isValidId ? BigInt(params.id) : 0n;
   const { address } = useAccount();
 
-  const { data: market, isLoading } = useReadContract({
+  const {
+    data: market,
+    isLoading,
+    refetch: refetchMarket,
+  } = useReadContract({
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "getMarket",
@@ -42,6 +50,20 @@ export default function MarketDetailPage() {
 
   const closingTime = market ? Number(market[4]) : 0;
   const countdown = useCountdown(closingTime);
+  const resolved = market?.[1] ?? false;
+  const isClosed = countdown.isPast;
+
+  // Auto-poll for resolution when the market has closed but isn't resolved yet.
+  // Without this a user sitting on the page after it closes would see
+  // "Waiting for resolution" forever until they manually refresh.
+  useEffect(() => {
+    if (!isClosed || resolved) return;
+    const interval = setInterval(() => {
+      refetchMarket();
+    }, RESOLUTION_POLL_MS);
+    return () => clearInterval(interval);
+  }, [isClosed, resolved, refetchMarket]);
+
   const handleSubmitted = useCallback(() => {
     refetchPosition();
   }, [refetchPosition]);
@@ -85,8 +107,8 @@ export default function MarketDetailPage() {
     );
   }
 
-  const [, resolved, outcomeCount, winningOutcome, , eventType, label] = market;
-  const status = resolved ? "Resolved" : countdown.isPast ? "Closed" : "Open";
+  const [, , outcomeCount, winningOutcome, , eventType, label] = market;
+  const status = resolved ? "Resolved" : isClosed ? "Closed" : "Open";
   const hasSubmitted = position?.[0] ?? false;
 
   return (
@@ -103,6 +125,12 @@ export default function MarketDetailPage() {
         </p>
       )}
 
+      {!resolved && isClosed && (
+        <p className="mt-2 text-xs text-bb-text-dim animate-pulse">
+          Checking for resolution…
+        </p>
+      )}
+
       {odds && (
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           {odds.map((bps, index) => (
@@ -115,8 +143,7 @@ export default function MarketDetailPage() {
       )}
 
       <div className="mt-8 space-y-6">
-        {/* Market is open and user hasn't predicted yet */}
-        {!resolved && !hasSubmitted && !countdown.isPast && (
+        {!resolved && !hasSubmitted && !isClosed && (
           <PredictionForm
             marketId={marketId}
             eventType={eventType}
@@ -125,18 +152,16 @@ export default function MarketDetailPage() {
           />
         )}
 
-        {/* Market is open and user already submitted */}
-        {!resolved && hasSubmitted && !countdown.isPast && (
+        {!resolved && hasSubmitted && !isClosed && (
           <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
             <p className="text-sm font-medium text-bb-text">Prediction submitted</p>
             <p className="mt-1 text-xs text-bb-text-dim">
-              Your encrypted prediction is on chain. Come back after the market resolves to claim your outcome.
+              Your encrypted prediction is on chain. This page will update automatically when the market resolves.
             </p>
           </div>
         )}
 
-        {/* Market closed before user submitted */}
-        {!resolved && !hasSubmitted && countdown.isPast && (
+        {!resolved && !hasSubmitted && isClosed && (
           <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
             <p className="text-sm font-medium text-bb-text">Market closed</p>
             <p className="mt-1 text-xs text-bb-text-dim">
@@ -145,17 +170,15 @@ export default function MarketDetailPage() {
           </div>
         )}
 
-        {/* Market closed and user submitted but not yet resolved */}
-        {!resolved && hasSubmitted && countdown.isPast && (
+        {!resolved && hasSubmitted && isClosed && (
           <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
             <p className="text-sm font-medium text-bb-text">Waiting for resolution</p>
             <p className="mt-1 text-xs text-bb-text-dim">
-              Your prediction is locked in. The simulation engine resolves this market shortly after it closes.
+              Your prediction is locked in. This page checks for resolution automatically every 10 seconds — no need to refresh.
             </p>
           </div>
         )}
 
-        {/* Market resolved — show claim regardless of whether user submitted */}
         {resolved && <ClaimPanel marketId={marketId} />}
       </div>
     </main>
