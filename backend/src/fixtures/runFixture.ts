@@ -60,8 +60,7 @@ export async function createFixture(
 
   const createdOnChain: { marketId: bigint; txHash: string }[] = [];
 
-  // Create markets on chain one by one. If any fails, throw with the
-  // ids already created so the engine can halt and log them.
+  // Create markets on chain one by one.
   for (const market of generatorMarkets) {
     try {
       const result = await deps.chain.createMarket(
@@ -70,8 +69,17 @@ export async function createFixture(
         closingTime,
         market.oddsBps,
       );
+
       createdOnChain.push(result);
     } catch (error) {
+      console.error("[blackbox-backend] createMarket failed:", error);
+
+      // No markets were created, so surface the original error.
+      if (createdOnChain.length === 0) {
+        throw error;
+      }
+
+      // Some markets were created before failure.
       throw new PartialFixtureCreationError(
         createdOnChain.map((m) => m.marketId),
         error,
@@ -79,11 +87,12 @@ export async function createFixture(
     }
   }
 
-  // Write metadata to Postgres. If this fails, all markets exist on chain
-  // but nothing recorded them -- throw with all ids so the engine halts.
+  // Write metadata to Postgres.
   try {
-    const pendingMarkets: { marketRowId: string; contractMarketId: bigint }[] =
-      [];
+    const pendingMarkets: {
+      marketRowId: string;
+      contractMarketId: bigint;
+    }[] = [];
 
     for (let i = 0; i < generatorMarkets.length; i++) {
       const market = generatorMarkets[i];
@@ -103,7 +112,10 @@ export async function createFixture(
         seedCommitment: commitment,
       });
 
-      pendingMarkets.push({ marketRowId, contractMarketId: onChain.marketId });
+      pendingMarkets.push({
+        marketRowId,
+        contractMarketId: onChain.marketId,
+      });
     }
 
     await rememberPendingFixture(
@@ -117,7 +129,7 @@ export async function createFixture(
       deps.db,
     );
   } catch (error) {
-    console.error("createMarket failed:", error);
+    console.error("[blackbox-backend] Database write failed:", error);
 
     throw new PartialFixtureCreationError(
       createdOnChain.map((m) => m.marketId),
