@@ -5,7 +5,10 @@ import type { DbClient } from "../db/types.js";
 import { insertMarket } from "../db/markets.js";
 import { insertSimulationEvent } from "../db/simulationEvents.js";
 import type { Generator } from "../generators/types.js";
-import { commitSeed, generateSeed } from "../generators/virtualFootball/randomness.js";
+import {
+  commitSeed,
+  generateSeed,
+} from "../generators/virtualFootball/randomness.js";
 import { rememberPendingFixture } from "./pendingStore.js";
 
 export type FixtureDeps = {
@@ -79,7 +82,8 @@ export async function createFixture(
   // Write metadata to Postgres. If this fails, all markets exist on chain
   // but nothing recorded them -- throw with all ids so the engine halts.
   try {
-    const pendingMarkets: { marketRowId: string; contractMarketId: bigint }[] = [];
+    const pendingMarkets: { marketRowId: string; contractMarketId: bigint }[] =
+      [];
 
     for (let i = 0; i < generatorMarkets.length; i++) {
       const market = generatorMarkets[i];
@@ -113,6 +117,8 @@ export async function createFixture(
       deps.db,
     );
   } catch (error) {
+    console.error("createMarket failed:", error);
+
     throw new PartialFixtureCreationError(
       createdOnChain.map((m) => m.marketId),
       error,
