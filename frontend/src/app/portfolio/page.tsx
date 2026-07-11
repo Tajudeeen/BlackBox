@@ -1,5 +1,6 @@
 "use client";
 
+import { isZeroHandle, useAllow, useIsAllowed, useUserDecrypt } from "@zama-fhe/react-sdk";
 import Link from "next/link";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 
@@ -16,9 +17,16 @@ type PositionEntry = {
   winningOutcome: number;
   submitted: boolean;
   claimed: boolean;
+  outcomeShareHandle?: `0x${string}`;
 };
 
-function PositionRow({ entry }: { entry: PositionEntry }) {
+function PositionRow({
+  entry,
+  decryptedShare,
+}: {
+  entry: PositionEntry;
+  decryptedShare?: bigint;
+}) {
   const countdown = useCountdown(entry.closingTime);
 
   const statusLabel = entry.resolved
@@ -33,17 +41,26 @@ function PositionRow({ entry }: { entry: PositionEntry }) {
       ? "text-bb-text-dim"
       : "text-bb-yellow";
 
+  const isWin = decryptedShare !== undefined && decryptedShare > 0n;
+
+  // For History rows (resolved + claimed), show Won/Lost once decrypted
+  // instead of the generic "Claimed" label. Falls back to "Claimed" while
+  // decryption is still pending or not yet authorized.
   const actionLabel = entry.resolved && !entry.claimed
     ? "Claim"
     : entry.resolved && entry.claimed
-      ? "Claimed"
+      ? decryptedShare !== undefined
+        ? (isWin ? `Won ${decryptedShare.toLocaleString()}` : "Lost")
+        : "Claimed"
       : countdown.isPast
         ? "Awaiting resolution"
         : "Open";
 
   const actionColor = entry.resolved && !entry.claimed
     ? "text-bb-yellow font-medium"
-    : "text-bb-text-dim";
+    : entry.resolved && entry.claimed && decryptedShare !== undefined
+      ? (isWin ? "text-bb-yellow font-medium" : "text-bb-text-dim")
+      : "text-bb-text-dim";
 
   return (
     <Link
@@ -105,17 +122,12 @@ function PortfolioContent({ address }: { address: string }) {
     query: { enabled: Boolean(MARKET_CONTRACT_ADDRESS) && marketIds.length > 0 },
   });
 
-  const isLoading = isLoadingCount || isLoadingMarkets || isLoadingPositions;
+  const { mutate: allow, isPending: isAllowing } = useAllow();
+  const { data: isAllowed } = useIsAllowed({
+    contractAddresses: [MARKET_CONTRACT_ADDRESS ?? "0x0000000000000000000000000000000000000000"],
+  });
 
-  if (isLoading) {
-    return (
-      <div className="space-y-3 mt-6">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-20 animate-pulse rounded-md border border-bb-line bg-bb-black-soft" />
-        ))}
-      </div>
-    );
-  }
+  const isLoading = isLoadingCount || isLoadingMarkets || isLoadingPositions;
 
   const positions = marketIds
     .map((marketId, i): PositionEntry | null => {
@@ -126,7 +138,9 @@ function PortfolioContent({ address }: { address: string }) {
       const [exists, resolved, , winningOutcome, closingTime, eventType, label] = market.result as [
         boolean, boolean, number, number, bigint, string, string,
       ];
-      const [submitted, claimed] = position.result as [boolean, boolean, ...unknown[]];
+      const [submitted, claimed, , , outcomeShareHandle] = position.result as [
+        boolean, boolean, unknown, unknown, `0x${string}`,
+      ];
 
       if (!exists || !submitted) return null;
 
@@ -139,6 +153,7 @@ function PortfolioContent({ address }: { address: string }) {
         winningOutcome,
         submitted,
         claimed,
+        outcomeShareHandle,
       };
     })
     .filter((p): p is PositionEntry => p !== null)
@@ -147,6 +162,33 @@ function PortfolioContent({ address }: { address: string }) {
   const unclaimed = positions.filter((p) => p.resolved && !p.claimed);
   const pending = positions.filter((p) => !p.resolved);
   const history = positions.filter((p) => p.resolved && p.claimed);
+
+  // Batch-decrypt every history entry's outcome share in one request.
+  // useIsAllowed is authorized per-contract (not per-market), so once the
+  // user has signed once (in ClaimPanel on any market, or via the button
+  // below), every handle on this contract decrypts without another
+  // signature -- this is what makes showing Won/Lost across the whole
+  // history list in one shot possible.
+  const historyHandles = history
+    .filter((p) => p.outcomeShareHandle && !isZeroHandle(p.outcomeShareHandle))
+    .map((p) => ({ handle: p.outcomeShareHandle!, contractAddress: MARKET_CONTRACT_ADDRESS! }));
+
+  const canDecryptHistory = Boolean(isAllowed && historyHandles.length > 0 && MARKET_CONTRACT_ADDRESS);
+
+  const { data: decryptedHistory, isPending: isDecryptingHistory } = useUserDecrypt(
+    { handles: canDecryptHistory ? historyHandles : [] },
+    { enabled: canDecryptHistory },
+  );
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3 mt-6">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-20 animate-pulse rounded-md border border-bb-line bg-bb-black-soft" />
+        ))}
+      </div>
+    );
+  }
 
   if (positions.length === 0) {
     return (
@@ -195,13 +237,33 @@ function PortfolioContent({ address }: { address: string }) {
 
       {history.length > 0 && (
         <section>
-          <h2 className="text-xs font-medium uppercase tracking-wide text-bb-text-dim mb-3">
-            History ({history.length})
-          </h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-bb-text-dim">
+              History ({history.length})
+            </h2>
+            {!isAllowed && historyHandles.length > 0 && (
+              <button
+                type="button"
+                onClick={() => MARKET_CONTRACT_ADDRESS && allow([MARKET_CONTRACT_ADDRESS])}
+                disabled={isAllowing}
+                className="text-xs font-medium text-bb-yellow underline-offset-4 hover:underline disabled:opacity-50"
+              >
+                {isAllowing ? "Signing…" : "Show won/lost"}
+              </button>
+            )}
+            {isAllowed && isDecryptingHistory && (
+              <span className="text-xs text-bb-text-dim">Decrypting…</span>
+            )}
+          </div>
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-            {history.map((p) => (
-              <PositionRow key={p.marketId.toString()} entry={p} />
-            ))}
+            {history.map((p) => {
+              const decrypted =
+                p.outcomeShareHandle && decryptedHistory
+                  ? decryptedHistory[p.outcomeShareHandle]
+                  : undefined;
+              const decryptedShare = decrypted !== undefined ? BigInt(decrypted.toString()) : undefined;
+              return <PositionRow key={p.marketId.toString()} entry={p} decryptedShare={decryptedShare} />;
+            })}
           </div>
         </section>
       )}

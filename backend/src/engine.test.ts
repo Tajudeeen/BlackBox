@@ -155,6 +155,68 @@ test("tick does not create a duplicate fixture for a generator already pending",
   }
 });
 
+test("tick creates a new fixture for a generator whose only fixture has closed but not yet settled", async () => {
+  resetAllHalts();
+  for (const id of listPendingFixtureIds()) await forgetPendingFixture(id);
+
+  const created: { eventType: string; label: string }[] = [];
+  let nextId = 100n;
+
+  // resolveMarket always fails here, simulating a settlement attempt that
+  // hasn't succeeded yet (a transient RPC issue, for example) -- so the
+  // old fixture stays pending-but-closed across this entire tick, which
+  // is exactly the real-world case this behavior needs to handle: a
+  // market that isn't resolving promptly should not block a new one from
+  // opening for the same sport.
+  const chain: ChainClient = {
+    async createMarket(eventType, label) {
+      const marketId = nextId++;
+      created.push({ eventType, label });
+      return { marketId, txHash: `0xfaketx${marketId}` };
+    },
+    async resolveMarket() {
+      throw new Error("simulated settlement failure -- market stays open on chain");
+    },
+    async getMarket(): Promise<MarketInfo> {
+      return baseMarketInfo({ resolved: false });
+    },
+  };
+  const { db } = createFakeDb();
+
+  const now = Math.floor(Date.now() / 1000);
+  const alreadyClosed = now - 10; // closed 10 seconds ago, but settlement keeps failing
+
+  await rememberPendingFixture("closed-not-settled", {
+    generatorName: "virtual_football",
+    seedHex: generateSeed(),
+    markets: [
+      { marketRowId: "row-w", contractMarketId: 20n },
+      { marketRowId: "row-o", contractMarketId: 21n },
+    ],
+    closingTime: alreadyClosed,
+  });
+
+  try {
+    await tick({ chain, db }, { closingInSeconds: 1_800 }, now);
+
+    const ids = listPendingFixtureIds();
+    const footballFixtures = ids.filter((id) => getPendingFixture(id)?.generatorName === "virtual_football");
+
+    // The old (closed, still-failing-to-settle) fixture is still pending,
+    // AND a brand new (open) fixture now exists for football too.
+    assert.strictEqual(footballFixtures.length, 2);
+    assert.ok(footballFixtures.includes("closed-not-settled"));
+
+    const newFootballId = footballFixtures.find((id) => id !== "closed-not-settled")!;
+    const newFixture = getPendingFixture(newFootballId)!;
+    assert.ok(newFixture.closingTime > now, "the new fixture should be open, not already closed");
+    assert.ok(created.length >= 2, "the new football fixture's markets should have been created on chain");
+  } finally {
+    for (const id of listPendingFixtureIds()) await forgetPendingFixture(id);
+    resetAllHalts();
+  }
+});
+
 test("a partial creation failure halts only that generator, not the others", async () => {
   resetAllHalts();
   for (const id of listPendingFixtureIds()) await forgetPendingFixture(id);
