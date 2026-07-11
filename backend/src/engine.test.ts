@@ -69,7 +69,7 @@ test("settleDueFixtures settles only fixtures whose closing time has passed", as
   const { chain, resolved } = createFakeChain();
   const { db } = createFakeDb();
 
-  rememberPendingFixture("fixture-due", {
+  await rememberPendingFixture("fixture-due", {
     generatorName: "virtual_football",
     seedHex: generateSeed(),
     markets: [
@@ -78,7 +78,7 @@ test("settleDueFixtures settles only fixtures whose closing time has passed", as
     ],
     closingTime: 1_000,
   });
-  rememberPendingFixture("fixture-not-due", {
+  await rememberPendingFixture("fixture-not-due", {
     generatorName: "dog_race",
     seedHex: generateSeed(),
     markets: [{ marketRowId: "row-3", contractMarketId: 102n }],
@@ -92,8 +92,8 @@ test("settleDueFixtures settles only fixtures whose closing time has passed", as
     assert.ok(getPendingFixture("fixture-not-due"));
     assert.strictEqual(resolved.length, 2);
   } finally {
-    forgetPendingFixture("fixture-due");
-    forgetPendingFixture("fixture-not-due");
+    await forgetPendingFixture("fixture-due");
+    await forgetPendingFixture("fixture-not-due");
     resetAllHalts();
   }
 });
@@ -101,7 +101,7 @@ test("settleDueFixtures settles only fixtures whose closing time has passed", as
 test("tick creates one fixture per generator when none are pending", async () => {
   resetAllHalts();
   // Clear any pending fixtures from prior tests
-  for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+  for (const id of listPendingFixtureIds()) await forgetPendingFixture(id);
 
   const { chain, created } = createFakeChain();
   const { db } = createFakeDb();
@@ -117,20 +117,20 @@ test("tick creates one fixture per generator when none are pending", async () =>
     const generatorNames = ids.map((id) => getPendingFixture(id)?.generatorName).sort();
     assert.deepStrictEqual(generatorNames, ["dog_race", "horse_race", "virtual_football"]);
   } finally {
-    for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+    for (const id of listPendingFixtureIds()) await forgetPendingFixture(id);
     resetAllHalts();
   }
 });
 
 test("tick does not create a duplicate fixture for a generator already pending", async () => {
   resetAllHalts();
-  for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+  for (const id of listPendingFixtureIds()) await forgetPendingFixture(id);
 
   const { chain, created } = createFakeChain();
   const { db } = createFakeDb();
 
   const farFuture = Math.floor(Date.now() / 1000) + 10_000;
-  rememberPendingFixture("already-pending", {
+  await rememberPendingFixture("already-pending", {
     generatorName: "virtual_football",
     seedHex: generateSeed(),
     markets: [
@@ -150,14 +150,14 @@ test("tick does not create a duplicate fixture for a generator already pending",
     // dog_race (1 market) + horse_race (2 markets) = 3 new market calls
     assert.strictEqual(created.length, 3);
   } finally {
-    for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+    for (const id of listPendingFixtureIds()) await forgetPendingFixture(id);
     resetAllHalts();
   }
 });
 
 test("a partial creation failure halts only that generator, not the others", async () => {
   resetAllHalts();
-  for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+  for (const id of listPendingFixtureIds()) await forgetPendingFixture(id);
 
   let footballCallCount = 0;
   const chain: ChainClient = {
@@ -191,7 +191,7 @@ test("a partial creation failure halts only that generator, not the others", asy
     assert.ok(names.includes("dog_race"));
     assert.ok(names.includes("horse_race"));
   } finally {
-    for (const id of listPendingFixtureIds()) forgetPendingFixture(id);
+    for (const id of listPendingFixtureIds()) await forgetPendingFixture(id);
     resetAllHalts();
   }
 });

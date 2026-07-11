@@ -56,7 +56,7 @@ test("settleFixture resolves both markets when neither is resolved yet", async (
   const { db } = createFakeDb();
 
   const seedHex = generateSeed();
-  rememberPendingFixture("fixture-fresh", {
+  await rememberPendingFixture("fixture-fresh", {
     generatorName: "virtual_football",
     seedHex,
     markets: [
@@ -71,7 +71,7 @@ test("settleFixture resolves both markets when neither is resolved yet", async (
     assert.deepStrictEqual(resolved, [200n, 201n]);
     assert.strictEqual(getPendingFixture("fixture-fresh"), undefined);
   } finally {
-    forgetPendingFixture("fixture-fresh");
+    await forgetPendingFixture("fixture-fresh");
   }
 });
 
@@ -95,7 +95,7 @@ test("settleFixture skips an already-resolved market and still resolves the pend
   const { db } = createFakeDb();
 
   const seedHex = generateSeed();
-  rememberPendingFixture("fixture-partial", {
+  await rememberPendingFixture("fixture-partial", {
     generatorName: "virtual_football",
     seedHex,
     markets: [
@@ -110,7 +110,7 @@ test("settleFixture skips an already-resolved market and still resolves the pend
     assert.deepStrictEqual(resolveCalls, [301n]);
     assert.strictEqual(getPendingFixture("fixture-partial"), undefined);
   } finally {
-    forgetPendingFixture("fixture-partial");
+    await forgetPendingFixture("fixture-partial");
   }
 });
 
@@ -129,7 +129,7 @@ test("settleFixture result matches deterministic simulation for the fixture seed
   const { db } = createFakeDb();
 
   const seedHex = generateSeed();
-  rememberPendingFixture("fixture-det", {
+  await rememberPendingFixture("fixture-det", {
     generatorName: "virtual_football",
     seedHex,
     markets: [
@@ -144,6 +144,6 @@ test("settleFixture result matches deterministic simulation for the fixture seed
     const expected = virtualFootball.simulate(seedHex);
     assert.ok(settled.summary.length > 0 && typeof expected.summary === "string");
   } finally {
-    forgetPendingFixture("fixture-det");
+    await forgetPendingFixture("fixture-det");
   }
 });

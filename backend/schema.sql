@@ -39,3 +39,29 @@ CREATE TABLE IF NOT EXISTS activity_log (
 CREATE INDEX IF NOT EXISTS idx_simulation_events_market_id ON simulation_events(market_id);
 CREATE INDEX IF NOT EXISTS idx_simulation_events_fixture_id ON simulation_events(fixture_id);
 CREATE INDEX IF NOT EXISTS idx_activity_log_market_id ON activity_log(market_id);
+
+-- Holds the secret seed for a fixture between commitment and reveal, plus
+-- enough state to finish settling it after a process restart. This table
+-- is NOT exposed by any public API or frontend query -- unlike
+-- simulation_events (which intentionally publishes seed_commitment and
+-- later seed_reveal), a row here contains the seed while it is still
+-- secret, before the fixture has closed and resolved.
+--
+-- Without this table, the engine's in-memory pending-fixture map is wiped
+-- on every process restart (a Railway redeploy, a crash, a host restart),
+-- silently orphaning every fixture that was still open at that moment --
+-- those markets stay open on-chain forever with no way to resolve them.
+--
+-- A row here is deleted the moment its fixture settles successfully
+-- (see backend/src/fixtures/settleFixture.ts). A row that lingers past
+-- its closing_time by more than a few minutes indicates the engine
+-- process was down when it should have settled -- see the "stuck
+-- fixture" recovery notes in backend/src/adminResolve.ts.
+CREATE TABLE IF NOT EXISTS pending_fixtures (
+  fixture_id      TEXT PRIMARY KEY,
+  generator_name  TEXT NOT NULL,
+  seed_hex        TEXT NOT NULL,           -- secret until the fixture settles; never expose this table publicly
+  markets         JSONB NOT NULL,          -- [{ marketRowId, contractMarketId }, ...] in generator output order
+  closing_time    BIGINT NOT NULL,         -- unix seconds
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);

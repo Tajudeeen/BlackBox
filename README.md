@@ -138,7 +138,8 @@ NEXT_PUBLIC_RPC_URL=
 1. Create a new Railway project from your GitHub repo
 2. Set the root directory to `backend`
 3. Add a PostgreSQL database service — Railway sets `DATABASE_URL` automatically
-4. Set environment variables:
+4. **Run `schema.sql` against that database before starting the backend.** Connect with `psql "$DATABASE_URL" -f schema.sql` (get the connection string from Railway's Postgres service → Connect tab) or paste its contents into Railway's built-in query console. This is required — the `pending_fixtures` table it creates is what lets the engine survive a redeploy without losing markets that are still open. Skipping this step means every fixture open at the moment of a redeploy gets permanently stuck at "awaiting resolution" (see the note below).
+5. Set environment variables:
 
 ```
 RPC_URL=
@@ -148,8 +149,10 @@ CLOSING_IN_SECONDS=300
 POLL_INTERVAL_MS=15000
 ```
 
-5. Set build command: `npm install && npm run build`
-6. Set start command: `npm start`
+6. Set build command: `npm install && npm run build`
+7. Set start command: `npm start`
+
+**Why markets can get permanently stuck, and how this is prevented:** each fixture's randomness seed must stay secret until the market closes (that's the whole point of the commit-reveal model). The engine keeps that seed in memory, and persists it to the `pending_fixtures` table the moment a fixture is created — so a process restart (any redeploy, crash, or host restart) reloads it from Postgres instead of losing it. On startup the engine logs `recovered N pending fixture(s) from a previous run` when this happens. If you have markets stuck from before this table existed, use `backend/src/adminResolve.ts` to manually resolve them — see that file's header comment for usage and its tradeoffs.
 
 ### Deploy the contract → Sepolia
 

@@ -102,12 +102,16 @@ export async function createFixture(
       pendingMarkets.push({ marketRowId, contractMarketId: onChain.marketId });
     }
 
-    rememberPendingFixture(fixtureId, {
-      generatorName: generator.name,
-      seedHex,
-      markets: pendingMarkets,
-      closingTime,
-    });
+    await rememberPendingFixture(
+      fixtureId,
+      {
+        generatorName: generator.name,
+        seedHex,
+        markets: pendingMarkets,
+        closingTime,
+      },
+      deps.db,
+    );
   } catch (error) {
     throw new PartialFixtureCreationError(
       createdOnChain.map((m) => m.marketId),

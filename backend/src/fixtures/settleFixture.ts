@@ -65,7 +65,7 @@ export async function settleFixture(deps: FixtureDeps, fixtureId: string): Promi
     pending.markets.map((market) => markMarketSettled(deps.db, market.marketRowId)),
   );
 
-  forgetPendingFixture(fixtureId);
+  await forgetPendingFixture(fixtureId, deps.db);
 
   return { fixtureId, generatorName: generator.name, summary: result.summary };
 }
