@@ -15,6 +15,14 @@ export type MarketSummary = {
   label: string;
 };
 
+// How often to re-check the chain for new or updated markets. Without
+// this, a page that stays open and focused (exactly what a judge
+// evaluating a live demo does) never sees new markets appear on its own
+// -- wagmi/tanstack-query only refetches on mount or window refocus by
+// default, not on a timer. 5s keeps the UI feeling live without hammering
+// the RPC provider.
+const POLL_INTERVAL_MS = 5_000;
+
 /**
  * Reads every market from the contract: `nextMarketId` first, then one
  * `getMarket` call per id via multicall. Fine at hackathon scale (a
@@ -27,7 +35,10 @@ export function useMarkets() {
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "nextMarketId",
-    query: { enabled: Boolean(MARKET_CONTRACT_ADDRESS) },
+    query: {
+      enabled: Boolean(MARKET_CONTRACT_ADDRESS),
+      refetchInterval: POLL_INTERVAL_MS,
+    },
   });
 
   const count = nextMarketId ?? 0n;
@@ -43,7 +54,10 @@ export function useMarkets() {
           args: [marketId],
         }) as const,
     ),
-    query: { enabled: Boolean(MARKET_CONTRACT_ADDRESS) && marketIds.length > 0 },
+    query: {
+      enabled: Boolean(MARKET_CONTRACT_ADDRESS) && marketIds.length > 0,
+      refetchInterval: POLL_INTERVAL_MS,
+    },
   });
 
   const markets: MarketSummary[] = marketIds

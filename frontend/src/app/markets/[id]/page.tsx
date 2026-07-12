@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { useAccount, useReadContract } from "wagmi";
 
 import { ClaimPanel } from "@/components/claim-panel";
@@ -10,9 +10,10 @@ import { BLACKBOX_MARKET_ABI, MARKET_CONTRACT_ADDRESS } from "@/lib/contract";
 import { eventTypeLabel, outcomeLabel } from "@/lib/marketMeta";
 import { useCountdown } from "@/lib/useCountdown";
 
-// How often to poll for resolution when a market is closed but not yet resolved.
-// Sepolia block time is ~12s so polling every 10s catches it within one block.
-const RESOLUTION_POLL_MS = 10_000;
+// How often to re-check this market's chain state. Covers both the
+// open -> closed -> resolved transition and a freshly submitted
+// prediction or claim showing up without a manual page refresh.
+const POLL_INTERVAL_MS = 5_000;
 
 export default function MarketDetailPage() {
   const params = useParams<{ id: string }>();
@@ -20,16 +21,15 @@ export default function MarketDetailPage() {
   const marketId = isValidId ? BigInt(params.id) : 0n;
   const { address } = useAccount();
 
-  const {
-    data: market,
-    isLoading,
-    refetch: refetchMarket,
-  } = useReadContract({
+  const { data: market, isLoading } = useReadContract({
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "getMarket",
     args: [marketId],
-    query: { enabled: Boolean(MARKET_CONTRACT_ADDRESS) && isValidId },
+    query: {
+      enabled: Boolean(MARKET_CONTRACT_ADDRESS) && isValidId,
+      refetchInterval: POLL_INTERVAL_MS,
+    },
   });
 
   const { data: odds } = useReadContract({
@@ -45,24 +45,16 @@ export default function MarketDetailPage() {
     abi: BLACKBOX_MARKET_ABI,
     functionName: "getPosition",
     args: address ? [marketId, address] : undefined,
-    query: { enabled: Boolean(MARKET_CONTRACT_ADDRESS && address) && isValidId },
+    query: {
+      enabled: Boolean(MARKET_CONTRACT_ADDRESS && address) && isValidId,
+      refetchInterval: POLL_INTERVAL_MS,
+    },
   });
 
   const closingTime = market ? Number(market[4]) : 0;
   const countdown = useCountdown(closingTime);
   const resolved = market?.[1] ?? false;
   const isClosed = countdown.isPast;
-
-  // Auto-poll for resolution when the market has closed but isn't resolved yet.
-  // Without this a user sitting on the page after it closes would see
-  // "Waiting for resolution" forever until they manually refresh.
-  useEffect(() => {
-    if (!isClosed || resolved) return;
-    const interval = setInterval(() => {
-      refetchMarket();
-    }, RESOLUTION_POLL_MS);
-    return () => clearInterval(interval);
-  }, [isClosed, resolved, refetchMarket]);
 
   const handleSubmitted = useCallback(() => {
     refetchPosition();
@@ -174,7 +166,7 @@ export default function MarketDetailPage() {
           <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
             <p className="text-sm font-medium text-bb-text">Waiting for resolution</p>
             <p className="mt-1 text-xs text-bb-text-dim">
-              Your prediction is locked in. This page checks for resolution automatically every 10 seconds — no need to refresh.
+              Your prediction is locked in. This page checks for resolution automatically — no need to refresh.
             </p>
           </div>
         )}

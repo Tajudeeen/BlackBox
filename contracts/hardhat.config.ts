@@ -13,6 +13,7 @@ import "./tasks/accounts";
 import "./tasks/FHECounter";
 
 const MNEMONIC: string = vars.get("MNEMONIC", "test test test test test test test test test test test junk");
+const ALCHEMY_API_KEY: string = vars.get("ALCHEMY_API_KEY", "");
 
 const config: HardhatUserConfig = {
   defaultNetwork: "hardhat",
@@ -52,7 +53,7 @@ const config: HardhatUserConfig = {
         count: 10,
       },
       chainId: 11155111,
-      url: "https://eth-sepolia.g.alchemy.com/v2/FM7HhHP6l-B-lqNJCQPXo",
+      url: `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
     },
   },
   paths: {

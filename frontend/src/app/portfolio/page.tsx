@@ -8,6 +8,11 @@ import { BLACKBOX_MARKET_ABI, MARKET_CONTRACT_ADDRESS } from "@/lib/contract";
 import { eventTypeIcon, eventTypeLabel, outcomeLabel } from "@/lib/marketMeta";
 import { useCountdown } from "@/lib/useCountdown";
 
+// How often to re-check the chain for new markets, new positions, or
+// resolutions. Without this, the portfolio only reflects whatever was
+// true at page load until the user manually refreshes.
+const POLL_INTERVAL_MS = 5_000;
+
 type PositionEntry = {
   marketId: bigint;
   label: string;
@@ -96,7 +101,10 @@ function PortfolioContent({ address }: { address: string }) {
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "nextMarketId",
-    query: { enabled: Boolean(MARKET_CONTRACT_ADDRESS) },
+    query: {
+      enabled: Boolean(MARKET_CONTRACT_ADDRESS),
+      refetchInterval: POLL_INTERVAL_MS,
+    },
   });
 
   const count = nextMarketId ?? 0n;
@@ -109,7 +117,10 @@ function PortfolioContent({ address }: { address: string }) {
       functionName: "getMarket" as const,
       args: [marketId] as const,
     })),
-    query: { enabled: Boolean(MARKET_CONTRACT_ADDRESS) && marketIds.length > 0 },
+    query: {
+      enabled: Boolean(MARKET_CONTRACT_ADDRESS) && marketIds.length > 0,
+      refetchInterval: POLL_INTERVAL_MS,
+    },
   });
 
   const { data: positionData, isLoading: isLoadingPositions } = useReadContracts({
@@ -119,7 +130,10 @@ function PortfolioContent({ address }: { address: string }) {
       functionName: "getPosition" as const,
       args: [marketId, address as `0x${string}`] as const,
     })),
-    query: { enabled: Boolean(MARKET_CONTRACT_ADDRESS) && marketIds.length > 0 },
+    query: {
+      enabled: Boolean(MARKET_CONTRACT_ADDRESS) && marketIds.length > 0,
+      refetchInterval: POLL_INTERVAL_MS,
+    },
   });
 
   const { mutate: allow, isPending: isAllowing } = useAllow();
