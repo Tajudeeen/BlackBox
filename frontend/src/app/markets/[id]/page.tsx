@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import { useAccount, useReadContract } from "wagmi";
 
 import { ClaimPanel } from "@/components/claim-panel";
+import { ConfidentialityProof } from "@/components/confidentiality-proof";
 import { PredictionForm } from "@/components/prediction-form";
 import { BLACKBOX_MARKET_ABI, MARKET_CONTRACT_ADDRESS } from "@/lib/contract";
 import { eventTypeLabel, outcomeLabel } from "@/lib/marketMeta";
@@ -172,6 +173,8 @@ export default function MarketDetailPage() {
         )}
 
         {resolved && <ClaimPanel marketId={marketId} />}
+
+        {hasSubmitted && <ConfidentialityProof marketId={marketId} />}
       </div>
     </main>
   );

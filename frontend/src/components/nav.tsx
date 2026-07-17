@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import { TokenBalance } from "@/components/token-balance";
+
 const LINKS = [
   { href: "/markets", label: "Markets" },
   { href: "/portfolio", label: "Portfolio" },
@@ -36,12 +38,13 @@ export function Nav() {
         </Link>
 
         {/* Desktop nav — visible from md breakpoint up */}
-        <nav className="hidden items-center gap-6 md:flex">
+        <nav className="hidden items-center gap-4 md:flex">
           {LINKS.map((link) => (
             <Link key={link.href} href={link.href} className={linkClass(link.href)}>
               {link.label}
             </Link>
           ))}
+          <TokenBalance />
           <ConnectButton showBalance={false} chainStatus="icon" accountStatus="address" />
         </nav>
 
@@ -72,16 +75,13 @@ export function Nav() {
 
       {/* Mobile dropdown menu */}
       {menuOpen && (
-        <nav className="flex flex-col border-t border-bb-line px-4 py-3 md:hidden">
+        <nav className="flex flex-col gap-3 border-t border-bb-line px-4 py-3 md:hidden">
           {LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`py-2.5 text-sm ${linkClass(link.href)}`}
-            >
+            <Link key={link.href} href={link.href} className={`py-1 text-sm ${linkClass(link.href)}`}>
               {link.label}
             </Link>
           ))}
+          <TokenBalance />
         </nav>
       )}
     </header>

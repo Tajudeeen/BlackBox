@@ -7,9 +7,11 @@ import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagm
 
 import { BLACKBOX_MARKET_ABI, MARKET_CONTRACT_ADDRESS } from "@/lib/contract";
 import { outcomeLabels } from "@/lib/marketMeta";
+import { parseTokenAmount, useOperatorApproval, useTokenDecimals } from "@/lib/useToken";
 
-// Well within euint64's range and Number.MAX_SAFE_INTEGER — every value
-// that passes this check converts to BigInt without precision loss.
+// Display-unit cap (BBX, not raw on-chain units). Comfortably below
+// euint64's range even after scaling by 10^decimals, and comfortably
+// above anything a faucet-funded wallet could realistically hold.
 const MAX_PREDICTION_AMOUNT = 1_000_000_000_000;
 
 export function PredictionForm({
@@ -25,6 +27,8 @@ export function PredictionForm({
 }) {
   const { address } = useAccount();
   const encrypt = useEncrypt();
+  const decimals = useTokenDecimals();
+  const { isApproved, approve, isPending: isApproving, error: approveError } = useOperatorApproval();
   const { writeContractAsync, data: txHash, isPending: isWriting, error: writeError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
@@ -41,7 +45,7 @@ export function PredictionForm({
       : !Number.isFinite(parsedAmount) || parsedAmount <= 0
         ? "Enter a positive whole number."
         : parsedAmount > MAX_PREDICTION_AMOUNT
-          ? `Maximum is ${MAX_PREDICTION_AMOUNT.toLocaleString()} units.`
+          ? `Maximum is ${MAX_PREDICTION_AMOUNT.toLocaleString()} BBX.`
           : null;
   const amount =
     amountValidationError === null && amountInput.trim() !== "" ? Math.floor(parsedAmount) : null;
@@ -56,10 +60,11 @@ export function PredictionForm({
 
     try {
       setStage("encrypting");
+      const rawAmount = parseTokenAmount(amount.toString(), decimals);
       const encrypted = await encrypt.mutateAsync({
         values: [
           { value: BigInt(selectedOutcome), type: "euint8" },
-          { value: BigInt(amount), type: "euint64" },
+          { value: rawAmount, type: "euint64" },
         ],
         contractAddress: MARKET_CONTRACT_ADDRESS,
         userAddress: address,
@@ -92,6 +97,31 @@ export function PredictionForm({
     return "Encrypt and submit";
   };
 
+  // Gate the whole form on the one-time ERC-7984 operator approval --
+  // BlackboxMarket cannot move a wallet's BBX to escrow it without this.
+  // See lib/useToken.ts's top comment for how this differs from the
+  // separate FHE decrypt authorization used for viewing a balance.
+  if (address && !isApproved) {
+    return (
+      <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
+        <h2 className="text-sm font-medium uppercase tracking-wide text-bb-text-dim">One-time approval</h2>
+        <p className="mt-2 text-sm text-bb-text-dim">
+          Before your first prediction, approve BLACKBOX to move your BBX when you submit one. You only need to
+          do this once — it does not move any tokens by itself.
+        </p>
+        <button
+          type="button"
+          onClick={() => approve()}
+          disabled={isApproving}
+          className="mt-4 w-full rounded-md bg-bb-yellow px-4 py-3 text-sm font-medium text-bb-black transition-opacity disabled:opacity-40"
+        >
+          {isApproving ? "Waiting for signature…" : "Approve BLACKBOX"}
+        </button>
+        {approveError && <p className="mt-3 text-xs text-red-400">{approveError.message}</p>}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
       <h2 className="text-sm font-medium uppercase tracking-wide text-bb-text-dim">Submit a prediction</h2>
@@ -121,7 +151,7 @@ export function PredictionForm({
       <label className="mt-4 block text-xs uppercase tracking-wide text-bb-text-dim">
         Prediction amount
         <span className="mt-0.5 block normal-case text-bb-text-dim">
-          Units — your private stake in this outcome
+          BBX — your private stake in this outcome. Short on BBX? Use the faucet in the top bar.
         </span>
         <input
           type="number"

@@ -13,12 +13,13 @@ Built for the Zama FHE Developer Program — Mainnet Season 3, Builder Track.
 ## Try it now
 
 1. Open [black-box-zama.vercel.app](https://black-box-zama.vercel.app)
-2. Get free Sepolia ETH from [sepoliafaucet.com](https://sepoliafaucet.com)
+2. Get free Sepolia ETH from [sepoliafaucet.com](https://sepoliafaucet.com) — this pays gas, it isn't the prediction currency
 3. Connect MetaMask on the Sepolia network
-4. Open any market, pick an outcome, enter an amount, hit **Encrypt and submit**
-5. After the market resolves, return to the same page and claim your result privately
+4. Click **+ Faucet** in the top bar to mint free testnet BBX — the confidential token predictions are made in
+5. Open any market, pick an outcome, enter an amount, hit **Encrypt and submit** (first time only: approve BLACKBOX to move your BBX — a one-time signature)
+6. After the market resolves, return to the same page and claim your result — paid straight to your BBX balance, decryptable only by you
 
-No mainnet ETH required. All activity is on Sepolia testnet.
+No mainnet ETH required. All activity is on Sepolia testnet, and BBX has no real-world value.
 
 ---
 
@@ -26,7 +27,7 @@ No mainnet ETH required. All activity is on Sepolia testnet.
 
 Public blockchains expose every position the moment it lands on chain. Other participants can see what you predicted, how much you committed, and which way the market is leaning — before it even settles.
 
-BLACKBOX removes that entirely. Predictions go on chain as ciphertext. The smart contract runs settlement logic directly on encrypted values using Zama FHE. Your outcome is computed without the contract ever seeing what you chose.
+BLACKBOX removes that entirely. Predictions go on chain as ciphertext, backed by real (testnet) value: submitting one escrows your encrypted BBX into the market, and a correct claim pays your encrypted outcome share straight back out. The smart contract runs both the settlement logic and the token movement directly on encrypted values using Zama FHE — your outcome is computed, and your payout is transferred, without the contract ever seeing what you chose or how much you committed.
 
 ---
 
@@ -38,7 +39,7 @@ The simulation engine creates a virtual sporting event and opens markets for it.
 
 **Submission**
 
-You connect your wallet, pick an outcome, and enter an amount. The Zama SDK encrypts both values in a Web Worker inside your browser. Only ciphertext reaches the network — never your actual choice or amount.
+You connect your wallet, pick an outcome, and enter an amount in BBX — BLACKBOX's confidential token (see [Confidential token](#confidential-token-blackboxcoin) below). The Zama SDK encrypts both values in a Web Worker inside your browser. Only ciphertext reaches the network. The contract escrows your encrypted amount out of your BBX balance into its own — a real token transfer, computed entirely on encrypted values.
 
 **Resolution**
 
@@ -46,7 +47,19 @@ When the market closes, the engine reveals the seed, recomputes the outcome dete
 
 **Claiming**
 
-You call claim. The contract computes your encrypted outcome share using `FHE.eq` and `FHE.select` — entirely on ciphertext. You sign a free wallet signature to authorize decryption. The Zama relayer sends the result back to your browser only.
+You call claim. The contract computes your encrypted outcome share using `FHE.eq` and `FHE.select` — entirely on ciphertext — and pays it straight to your BBX balance via the same confidential token, still without decrypting anything. You sign a free wallet signature to authorize decryption of the result. The Zama relayer sends it back to your browser only.
+
+---
+
+## Confidential token: BlackboxCoin
+
+Predictions carry real value, not an abstract number. `BlackboxCoin.sol` is a confidential fungible token built on [OpenZeppelin's ERC-7984 standard](https://docs.zama.org/protocol/examples/openzeppelin-confidential-contracts/erc7984) — developed jointly with Zama for the fhEVM, not hand-rolled. Balances and transfer amounts are encrypted end to end; only the account holder can decrypt their own balance.
+
+- **Public faucet.** Anyone can mint free testnet BBX once per hour — no external token source needed to try the app.
+- **Escrow on submit, payout on claim.** `BlackboxMarket` moves BBX confidentially in both directions, computed entirely on ciphertext (see `BlackboxMarket.sol`'s design notes 4–8 for exactly how, and the honest limitations of doing so).
+- **One-time approval required.** Before a wallet's first prediction, it must approve `BlackboxMarket` as an ERC-7984 operator — the frontend prompts for this automatically, once.
+
+Two things worth knowing before relying on this beyond a demo: OpenZeppelin's confidential-contracts library is explicitly not yet covered by their formal audit process or bug bounty, per their own documentation — the right ecosystem-standard choice, not an audited one. And BLACKBOX's token balance is pooled across every market, not reserved per market, the same way a real fixed-odds bookmaker's bankroll works in aggregate — see [SECURITY.md](./SECURITY.md) section 6 for the full writeup, including a real bug this integration surfaced and fixed during testing.
 
 ---
 
@@ -67,9 +80,9 @@ Each generator uses a commit-reveal randomness model. The simulation is determin
 ## Architecture
 
 ```
-frontend/     Next.js + wagmi + RainbowKit + Zama React SDK  →  Vercel
-backend/      Node.js simulation engine + Postgres             →  Railway
-contracts/    BlackboxMarket.sol (Hardhat + Zama fhEVM)        →  Ethereum Sepolia
+frontend/     Next.js + wagmi + RainbowKit + Zama React SDK       →  Vercel
+backend/      Node.js simulation engine + Postgres                →  Railway
+contracts/    BlackboxMarket.sol + BlackboxCoin.sol (Hardhat + Zama fhEVM + OpenZeppelin ERC-7984)  →  Ethereum Sepolia
 ```
 
 The frontend reads market data directly from the chain. The backend is the operator: it creates markets, commits to randomness, and resolves fixtures. Postgres stores only public metadata — predictions never touch the database.
@@ -162,7 +175,7 @@ npx hardhat vars set MNEMONIC
 npx hardhat deploy --network sepolia
 ```
 
-Use the printed `BlackboxMarket contract` address for `MARKET_CONTRACT_ADDRESS` in both frontend and backend.
+This deploys `BlackboxCoin` first, then `BlackboxMarket` wired to it automatically (see `deploy/BlackboxMarket.ts`'s `dependencies` field). Use the printed `BlackboxMarket contract` address for `MARKET_CONTRACT_ADDRESS` in both frontend and backend — the frontend reads `BlackboxCoin`'s address directly from the deployed market's own `TOKEN()` getter, so there's no second address to configure or keep in sync.
 
 ---
 
@@ -174,6 +187,7 @@ The full adversarial audit is in [SECURITY.md](./SECURITY.md). Key points:
 - `claim()` uses a single `FHE.eq` comparison against the already-known plaintext winning outcome, not a loop — 46.8% gas reduction verified against the old implementation
 - The simulation engine's `settleFixture` is idempotent — safe to retry after a partial failure without hitting `MarketAlreadyResolved`
 - The operator key is a trusted role with no dispute window — documented in `BlackboxMarket.sol`'s NatSpec and in SECURITY.md
+- The confidential token integration (BlackboxCoin) is pooled across markets, not reserved per market — a real, documented limitation, not an oversight, covered in SECURITY.md section 6 along with a real cross-contract ACL bug found and fixed while building it
 
 ---
 

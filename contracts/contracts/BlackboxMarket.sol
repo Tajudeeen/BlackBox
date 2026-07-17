@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {FHE, ebool, euint8, euint64, externalEuint8, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC7984} from "@openzeppelin/confidential-contracts/interfaces/IERC7984.sol";
 
 /// @title BlackboxMarket
 /// @author Deeen_Codes
@@ -51,13 +52,20 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 ///    contract with a confidential token whose mint/transfer path enforces
 ///    a balance check, rather than relying on this contract alone.
 ///
-/// 4. This contract does not move value. `amount` and `outcomeShare` are
-///    abstract encrypted units. Wiring them to a real confidential asset
-///    (escrow on submit, payout on claim) is a deliberate later phase, not
-///    an oversight -- doing it well requires a confidential token standard
-///    and is a separate audit surface from the market logic itself.
+/// 4. Prediction amounts and outcome shares now move real value, via
+///    `BlackboxCoin` (an OpenZeppelin ERC-7984 confidential token -- see
+///    that contract's own NatSpec for what "confidential token" means
+///    here and its provenance). `submitPrediction` escrows the caller's
+///    encrypted amount into this contract's own token balance;
+///    `claim` pays the resulting outcome share back out of that same
+///    balance. Both moves are confidential end to end: the token amounts
+///    involved are never decrypted on chain, same as everything else in
+///    this contract. See notes 7 and 8 below for what this integration
+///    requires from callers and what it does not (yet) protect against.
 ///
-/// 5. Encrypted-input replay, reviewed during the Phase 5 security pass.
+/// 5. Encrypted-input replay, reviewed during the Phase 5 security pass
+///    and re-examined here now that design note 4's value custody exists,
+///    per this note's own original instruction to do so.
 ///    `submitPrediction`'s `inputProof` is verified by the FHEVM
 ///    coprocessor against `msg.sender` (traced through
 ///    `FHE.fromExternal` -> `Impl.verify` ->
@@ -69,16 +77,18 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 ///    different address, because the coprocessor binds the proof to the
 ///    address that calls it; b) the same user CAN reuse their own
 ///    handle+proof across multiple markets in this contract, since nothing
-///    binds a proof to one specific `marketId`. (b) is not exploitable
-///    today: it only lets a participant copy their own already-chosen
-///    prediction value into another market they voluntarily submit to,
-///    `AlreadySubmitted` still applies independently per (marketId,
-///    address), and with no value custodied yet there is nothing to
-///    duplicate or drain. This stops being a non-issue the moment real
-///    value custody is added (design note 4) -- whatever takes on that
-///    role should re-examine whether marketId needs to be bound into the
-///    submission somehow, e.g. by including it in a value the user signs
-///    over, rather than assuming this analysis still holds unchanged.
+///    binds a proof to one specific `marketId`. (b) remains non-exploitable
+///    now that real value is involved: each `submitPrediction` call
+///    independently escrows from the caller's actual on-chain token
+///    balance via `confidentialTransferFrom`, which enforces sufficient
+///    balance itself, per call. Reusing the same handle+proof for a
+///    second market does not re-spend already-escrowed tokens or double-
+///    count anything -- it independently escrows the same plaintext
+///    amount a second time, debited from the caller's real balance a
+///    second time, same as if they had typed the same number into two
+///    separate transactions. There is no shared pot being double-counted
+///    across the two calls. `AlreadySubmitted` still applies independently
+///    per (marketId, address) regardless.
 ///
 /// 6. Participation metadata is intentionally public, not a leak. Anyone
 ///    can call `getPosition(marketId, anyAddress)` and read back whether
@@ -91,6 +101,66 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 ///    If a future version of this product wants to hide participation
 ///    too, that is a materially different privacy goal requiring a
 ///    different access pattern for this function, not a bug fix.
+///
+/// 7. Using the token requires a one-time operator approval. `token`'s
+///    ERC-7984 `confidentialTransferFrom` requires the caller (this
+///    contract) to be an approved operator for whichever address it is
+///    moving tokens from -- that is a property of the ERC-7984 standard,
+///    not something this contract can bypass or automate on a user's
+///    behalf. In practice: before a participant's first `submitPrediction`
+///    call, their wallet must call `token.setOperator(address(this), until)`
+///    once. The frontend handles prompting for this (see
+///    `frontend/src/components/prediction-form.tsx`); a participant who
+///    submits a prediction transaction without having done this will see
+///    it revert with the token's own `ERC7984UnauthorizedCaller` error,
+///    not a BLACKBOX-specific one.
+///
+/// 8. Solvency is pooled across all markets, not reserved per market --
+///    a known, deliberate limitation, not an oversight. This contract
+///    holds one aggregate token balance for every market it has ever
+///    created; `submitPrediction` adds to that balance and `claim` pays
+///    out of it, but nothing earmarks a given market's escrowed amounts
+///    for that market's own eventual payouts. This is exactly how a real
+///    fixed-odds sportsbook's bankroll works in aggregate -- money in
+///    from losing predictions funds payouts to winning ones, across the
+///    whole book, not ring-fenced bet-by-bet -- and is fine as long as
+///    odds are set sensibly and the aggregate stays solvent. What this
+///    contract does NOT do is verify that solvency: there is no reserve
+///    requirement, no per-market exposure cap, and no check that the
+///    contract's token balance can actually cover every unclaimed
+///    outstanding `outcomeShare` before allowing a new market to be
+///    created or a new prediction to be submitted.
+///
+///    The concrete consequence, confirmed by
+///    `test/BlackboxMarket.ts`'s "pays nothing when the market's pooled
+///    balance cannot cover a winner's payout" case: if the pool is
+///    insufficient at claim time, `TOKEN.confidentialTransfer` fails
+///    safely (per `FHESafeMath`'s try-semantics) and silently moves
+///    nothing -- but `claim` has already set `position.claimed = true`
+///    and stored the fully-computed `outcomeShare` before making that
+///    transfer call. The participant is left permanently unable to
+///    retry (`AlreadyClaimed` blocks any future attempt) despite never
+///    having actually received their payout, and `getPosition` will
+///    forever report a claim that looks successful.
+///
+///    This isn't sloppiness in `claim`'s ordering -- it reflects a real
+///    constraint of confidential computation: `TOKEN.confidentialTransfer`
+///    returns an encrypted `euint64` for how much actually moved, and
+///    there is no way to branch claim's control flow (e.g. "only mark
+///    claimed if the full amount transferred") on that encrypted result
+///    within the same transaction. Doing so would require decrypting it
+///    on chain, which defeats the entire point of using a confidential
+///    token, or an asynchronous decrypt-then-confirm flow spanning
+///    multiple transactions, which this contract does not implement.
+///
+///    On Sepolia testnet play money (see `BlackboxCoin`'s public faucet)
+///    an unretrievable claim has no real financial consequence. A
+///    deployment with real value at stake would need genuine reserve
+///    accounting -- e.g. tracking each market's worst-case total payout
+///    liability in plaintext at prediction-submission time, and refusing
+///    new predictions once the pool can no longer cover it -- before this
+///    class of silent, permanent, unpaid "successful" claim could be
+///    ruled out. Add that before removing this note.
 contract BlackboxMarket is ZamaEthereumConfig, Ownable {
     /// @notice Maximum number of outcomes a single market may have. Bounds
     /// the size of the per-market odds array and the cost of validating it
@@ -137,6 +207,13 @@ contract BlackboxMarket is ZamaEthereumConfig, Ownable {
     /// from `owner` so the day-to-day simulation engine signer is not the
     /// same high-value key that controls contract ownership.
     address public operator;
+
+    /// @notice The confidential token predictions are escrowed in and
+    /// outcome shares are paid out of. See design notes 4, 7, and 8 above.
+    /// Immutable: set once at deployment, never changeable afterward,
+    /// removing "operator repoints the token mid-operation" as an
+    /// attack surface entirely rather than gating it behind access control.
+    IERC7984 public immutable TOKEN;
 
     /// @notice Id that will be assigned to the next market created.
     uint256 public nextMarketId;
@@ -199,7 +276,9 @@ contract BlackboxMarket is ZamaEthereumConfig, Ownable {
         _;
     }
 
-    constructor() Ownable(msg.sender) {
+    constructor(address tokenAddress) Ownable(msg.sender) {
+        if (tokenAddress == address(0)) revert ZeroAddress();
+        TOKEN = IERC7984(tokenAddress);
         operator = msg.sender;
         emit OperatorUpdated(address(0), msg.sender);
     }
@@ -263,6 +342,13 @@ contract BlackboxMarket is ZamaEthereumConfig, Ownable {
     /// `encryptedAmount` must be created together as one encrypted input
     /// batch (see the Zama relayer SDK's `createEncryptedInput`), so they
     /// share a single `inputProof`.
+    ///
+    /// Escrows `encryptedAmount` from the caller's confidential token
+    /// balance into this contract via `TOKEN.confidentialTransferFrom`.
+    /// Requires the caller to have already approved this contract as an
+    /// ERC-7984 operator on `TOKEN` (see design note 7) -- without that,
+    /// this call reverts with the token's own `ERC7984UnauthorizedCaller`
+    /// error, not a BLACKBOX-specific one.
     /// @param marketId Market to submit a prediction to.
     /// @param encryptedOutcome Encrypted outcome index handle.
     /// @param encryptedAmount Encrypted prediction amount handle.
@@ -291,6 +377,17 @@ contract BlackboxMarket is ZamaEthereumConfig, Ownable {
         FHE.allow(outcome, msg.sender);
         FHE.allowThis(amount);
         FHE.allow(amount, msg.sender);
+
+        // Escrow the prediction amount. Requires FHE.allowThis(amount)
+        // above so this contract can pass the handle to the token call,
+        // AND FHE.allow(amount, address(TOKEN)) here so BlackboxCoin's own
+        // internal balance-sufficiency check (FHE.ge inside its transfer
+        // logic) can operate on the handle too -- FHE ACL permissions are
+        // scoped per contract execution context, not per external call
+        // chain, so BlackboxMarket already having permission does not
+        // extend it to BlackboxCoin's own code once execution moves there.
+        FHE.allow(amount, address(TOKEN));
+        TOKEN.confidentialTransferFrom(msg.sender, address(this), amount);
 
         emit PredictionSubmitted(marketId, msg.sender);
     }
@@ -359,6 +456,14 @@ contract BlackboxMarket is ZamaEthereumConfig, Ownable {
     /// encrypted prediction equal to, say, 200 can never equal a
     /// `winningOutcome` that is always less than `MAX_OUTCOMES`, so
     /// `matched` is false and the share is zero either way.
+    ///
+    /// Pays `outcomeShare` out to the caller via `TOKEN.confidentialTransfer`,
+    /// from this contract's own pooled token balance -- see design note 8
+    /// for what "pooled" means and what it does not guarantee. A losing
+    /// claim (`outcomeShare` encrypting zero) still calls this; transferring
+    /// an encrypted zero is a harmless no-op in effect, and keeping the
+    /// call unconditional avoids branching on the (encrypted) win/loss
+    /// result, consistent with the rest of this function.
     /// @param marketId Market to claim against.
     function claim(uint256 marketId) external {
         Market storage market = _markets[marketId];
@@ -379,6 +484,13 @@ contract BlackboxMarket is ZamaEthereumConfig, Ownable {
 
         FHE.allowThis(outcomeShare);
         FHE.allow(outcomeShare, msg.sender);
+
+        // Pay out. Same ACL requirement as the escrow call in
+        // submitPrediction: BlackboxCoin's own internal balance-check code
+        // needs its own grant on this handle, separate from this
+        // contract's own permission via FHE.allowThis above.
+        FHE.allow(outcomeShare, address(TOKEN));
+        TOKEN.confidentialTransfer(msg.sender, outcomeShare);
 
         emit Claimed(marketId, msg.sender);
     }

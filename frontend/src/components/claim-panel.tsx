@@ -2,12 +2,15 @@
 
 import { isZeroHandle, useAllow, useIsAllowed, useUserDecrypt } from "@zama-fhe/react-sdk";
 import { useEffect } from "react";
+import { formatUnits } from "viem";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 
 import { BLACKBOX_MARKET_ABI, MARKET_CONTRACT_ADDRESS } from "@/lib/contract";
+import { useTokenDecimals } from "@/lib/useToken";
 
 export function ClaimPanel({ marketId }: { marketId: bigint }) {
   const { address } = useAccount();
+  const decimals = useTokenDecimals();
 
   const { data: position, refetch: refetchPosition } = useReadContract({
     address: MARKET_CONTRACT_ADDRESS,
@@ -64,6 +67,7 @@ export function ClaimPanel({ marketId }: { marketId: bigint }) {
   const decryptedShare = decrypted && outcomeShareHandle ? decrypted[outcomeShareHandle] : undefined;
   const shareValue = decryptedShare !== undefined ? BigInt(decryptedShare.toString()) : undefined;
   const isWin = shareValue !== undefined && shareValue > 0n;
+  const formattedShare = shareValue !== undefined ? formatUnits(shareValue, decimals) : undefined;
 
   return (
     <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
@@ -72,7 +76,8 @@ export function ClaimPanel({ marketId }: { marketId: bigint }) {
       {!hasClaimed && (
         <>
           <p className="mt-2 text-sm text-bb-text-dim">
-            The market has resolved. Claim to compute your outcome — only you can decrypt the result.
+            The market has resolved. Claim to compute your outcome and pay it out to your BBX balance — only
+            you can decrypt the amount.
           </p>
           <button
             type="button"
@@ -123,16 +128,17 @@ export function ClaimPanel({ marketId }: { marketId: bigint }) {
               {isWin ? (
                 <>
                   <p className="text-xs uppercase tracking-wide text-bb-yellow">Correct prediction</p>
-                  <p className="mt-1 text-3xl font-medium text-bb-text">{shareValue.toLocaleString()}</p>
+                  <p className="mt-1 text-3xl font-medium text-bb-text">{formattedShare} BBX</p>
                   <p className="mt-1 text-xs text-bb-text-dim">
-                    Outcome share points · Sepolia testnet only, no real value · Only your wallet can see this number
+                    Paid to your BBX balance · Sepolia testnet only, no real-world value · Only your wallet can
+                    decrypt this amount
                   </p>
                 </>
               ) : (
                 <>
                   <p className="text-xs uppercase tracking-wide text-bb-text-dim">Prediction did not match</p>
                   <p className="mt-2 text-sm text-bb-text-dim">
-                    Your outcome share is 0. The market resolved to a different outcome than you predicted.
+                    Your outcome share is 0 BBX. The market resolved to a different outcome than you predicted.
                   </p>
                 </>
               )}
