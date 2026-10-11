@@ -6,11 +6,10 @@ export default function Home() {
       <div className="space-y-3">
         <p className="text-xs uppercase tracking-[0.2em] text-bb-yellow">Zama FHE Developer Program</p>
         <h1 className="text-3xl font-medium tracking-tight text-bb-text sm:text-4xl md:text-5xl lg:text-6xl">
-          The first confidential prediction market powered by FHE.
+          Private positions. Results you can check.
         </h1>
         <p className="max-w-xl text-sm text-bb-text-dim sm:text-base">
-          BLACKBOX keeps every position private. Your prediction, your amount, and your outcome stay
-          encrypted — visible only to you, never to other participants, never to the chain.
+          BLACKBOX encrypts choices and amounts while publishing commitments and deterministic results. Participation remains public. Decryption depends on your wallet, contract permissions and the FHE network.
         </p>
       </div>
 
@@ -47,7 +46,7 @@ export default function Home() {
         <StepCard
           step="3"
           title="Claim privately"
-          body="After the market resolves, only you can decrypt your outcome. The contract never sees what you chose."
+          body="Decrypt your actual deposit, entitlement, paid amount and outstanding amount. A successful transaction alone does not prove payment."
         />
       </div>
 
@@ -55,7 +54,7 @@ export default function Home() {
         <p className="text-xs text-bb-text-dim sm:text-sm">
           <span className="font-medium text-bb-text">How it works under the hood:</span> predictions go on
           chain as ciphertext. The contract runs settlement logic directly on encrypted values using Zama
-          FHE — no trusted intermediary decrypts anything to compute your payout.
+          FHE. The operator chooses and knows the result seed before opening. The shared token pool has no payout or refund funding guarantee.
         </p>
       </div>
     </main>

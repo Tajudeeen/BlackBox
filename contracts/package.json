@@ -62,7 +62,8 @@
     "ts-node": "^10.9.2",
     "typechain": "^8.3.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.59.1"
+    "typescript-eslint": "^8.59.1",
+    "@openzeppelin/confidential-contracts": "0.4.0"
   },
   "files": [
     "contracts"

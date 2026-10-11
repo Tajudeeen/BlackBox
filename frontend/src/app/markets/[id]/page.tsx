@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useCallback } from "react";
 import { useAccount, useReadContract } from "wagmi";
 
+import { MarketEvidence } from "@/components/market-evidence";
 import { ClaimPanel } from "@/components/claim-panel";
 import { ConfidentialityProof } from "@/components/confidentiality-proof";
 import { PredictionForm } from "@/components/prediction-form";
@@ -22,7 +23,8 @@ export default function MarketDetailPage() {
   const marketId = isValidId ? BigInt(params.id) : 0n;
   const { address } = useAccount();
 
-  const { data: market, isLoading } = useReadContract({
+  const { data: market, isLoading, error: marketError } = useReadContract({
+    chainId: 11155111,
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "getMarket",
@@ -34,6 +36,7 @@ export default function MarketDetailPage() {
   });
 
   const { data: odds } = useReadContract({
+    chainId: 11155111,
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "getMarketOdds",
@@ -42,6 +45,7 @@ export default function MarketDetailPage() {
   });
 
   const { data: position, refetch: refetchPosition } = useReadContract({
+    chainId: 11155111,
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "getPosition",
@@ -52,6 +56,13 @@ export default function MarketDetailPage() {
     },
   });
 
+  const { data: evidence } = useReadContract({
+    chainId: 11155111, address: MARKET_CONTRACT_ADDRESS, abi: BLACKBOX_MARKET_ABI,
+    functionName: 'getMarketEvidence', args: [marketId],
+    query: { enabled: Boolean(MARKET_CONTRACT_ADDRESS) && isValidId, refetchInterval: POLL_INTERVAL_MS }
+  });
+  const isV2 = evidence?.[3] === 2n;
+  const cancelled = evidence?.[2] ?? false;
   const closingTime = market ? Number(market[4]) : 0;
   const countdown = useCountdown(closingTime);
   const resolved = market?.[1] ?? false;
@@ -92,6 +103,8 @@ export default function MarketDetailPage() {
     );
   }
 
+  if (marketError) return <main className="p-8">Market data unavailable. Check your RPC connection.</main>;
+
   if (!market || !market[0]) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-16 lg:max-w-3xl">
@@ -101,7 +114,7 @@ export default function MarketDetailPage() {
   }
 
   const [, , outcomeCount, winningOutcome, , eventType, label] = market;
-  const status = resolved ? "Resolved" : isClosed ? "Closed" : "Open";
+  const status = cancelled ? "Cancelled" : resolved ? "Resolved" : isClosed ? "Closed" : "Open";
   const hasSubmitted = position?.[0] ?? false;
 
   return (
@@ -112,7 +125,7 @@ export default function MarketDetailPage() {
         {status} · {resolved ? "Settled" : countdown.label}
       </p>
 
-      {resolved && (
+      {resolved && !cancelled && (
         <p className="mt-2 text-sm text-bb-yellow">
           Result: {outcomeLabel(eventType, winningOutcome)}
         </p>
@@ -136,7 +149,7 @@ export default function MarketDetailPage() {
       )}
 
       <div className="mt-8 space-y-6">
-        {!resolved && !hasSubmitted && !isClosed && (
+        {isV2 && !resolved && !hasSubmitted && !isClosed && (
           <PredictionForm
             marketId={marketId}
             eventType={eventType}
@@ -172,7 +185,9 @@ export default function MarketDetailPage() {
           </div>
         )}
 
-        {resolved && <ClaimPanel marketId={marketId} />}
+        {isV2 && hasSubmitted && <ClaimPanel key={address} marketId={marketId} resolved={resolved} />}
+        <MarketEvidence marketId={marketId} />
+        {!isV2 && <p>Protocol v2 evidence is unavailable. Transactions are disabled.</p>}
 
         {hasSubmitted && <ConfidentialityProof marketId={marketId} />}
       </div>

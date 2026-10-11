@@ -1,5 +1,5 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { defineChain } from "viem";
+import { defineChain, http } from "viem";
 import { sepolia } from "wagmi/chains";
 
 // Local FHEVM-ready Hardhat node, matching contracts/hardhat.config.ts.
@@ -19,5 +19,6 @@ export const wagmiConfig = getDefaultConfig({
   // See: https://cloud.walletconnect.com
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "blackbox-dev-placeholder",
   chains: [sepolia, hardhatLocal],
+  transports: { [sepolia.id]: http(process.env.NEXT_PUBLIC_RPC_URL || undefined), [hardhatLocal.id]: http("http://127.0.0.1:8545") },
   ssr: true,
 });

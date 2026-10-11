@@ -25,6 +25,7 @@ export function ConfidentialityProof({ marketId }: { marketId: bigint }) {
   const { address } = useAccount();
 
   const { data: position } = useReadContract({
+    chainId: 11155111,
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "getPosition",
@@ -43,8 +44,7 @@ export function ConfidentialityProof({ marketId }: { marketId: bigint }) {
       </summary>
       <p className="mt-3 text-bb-text-dim">
         This is exactly what <code className="font-mono">getPosition</code> returns for your address on this
-        market — the real bytes32 values, read live from the chain. There is no plaintext prediction or amount
-        stored anywhere for this contract to leak.
+        market — the real bytes32 values, read live from the chain. These are ciphertext references, not standalone proof of confidentiality.
       </p>
       <div className="mt-3 space-y-2 font-mono">
         <div>
@@ -61,8 +61,7 @@ export function ConfidentialityProof({ marketId }: { marketId: bigint }) {
         </div>
       </div>
       <p className="mt-3 text-bb-text-dim">
-        Anyone can read these same bytes for any address on this market — they decode to nothing without
-        FHEVM decryption rights, which this contract only ever grants back to the address that submitted them.
+        Anyone can read these same bytes for any address on this market — decryption depends on contract ACL permissions, your wallet authorization and the FHE network. Participation and timing remain public.
       </p>
     </details>
   );

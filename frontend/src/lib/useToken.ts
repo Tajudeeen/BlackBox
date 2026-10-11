@@ -15,6 +15,7 @@ const POLL_INTERVAL_MS = 5_000;
  */
 export function useTokenAddress() {
   const { data: tokenAddress, isLoading } = useReadContract({
+    chainId: 11155111,
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "TOKEN",
@@ -37,6 +38,7 @@ export function useTokenAddress() {
 export function useTokenDecimals() {
   const { tokenAddress } = useTokenAddress();
   const { data: decimals } = useReadContract({
+    chainId: 11155111,
     address: tokenAddress,
     abi: BLACKBOX_COIN_ABI,
     functionName: "decimals",
@@ -74,6 +76,7 @@ export function useTokenBalance() {
   const decimals = useTokenDecimals();
 
   const { data: balanceHandle, refetch: refetchBalanceHandle } = useReadContract({
+    chainId: 11155111,
     address: tokenAddress,
     abi: BLACKBOX_COIN_ABI,
     functionName: "confidentialBalanceOf",
@@ -129,6 +132,7 @@ export function useFaucet() {
   const { tokenAddress } = useTokenAddress();
   const decimals = useTokenDecimals();
   const { data: faucetAmountRaw } = useReadContract({
+    chainId: 11155111,
     address: tokenAddress,
     abi: BLACKBOX_COIN_ABI,
     functionName: "FAUCET_AMOUNT",
@@ -139,6 +143,7 @@ export function useFaucet() {
   const claim = async () => {
     if (!tokenAddress) return;
     await writeContractAsync({
+      chainId: 11155111,
       address: tokenAddress,
       abi: BLACKBOX_COIN_ABI,
       functionName: "faucet",
@@ -162,6 +167,7 @@ export function useOperatorApproval() {
   const { tokenAddress } = useTokenAddress();
 
   const { data: isApproved, refetch: refetchApproval } = useReadContract({
+    chainId: 11155111,
     address: tokenAddress,
     abi: BLACKBOX_COIN_ABI,
     functionName: "isOperator",
@@ -181,6 +187,7 @@ export function useOperatorApproval() {
     // an ERC-20 "infinite approval," not a per-prediction one.
     const oneYearFromNow = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
     await writeContractAsync({
+      chainId: 11155111,
       address: tokenAddress,
       abi: BLACKBOX_COIN_ABI,
       functionName: "setOperator",

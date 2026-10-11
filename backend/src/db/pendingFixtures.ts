@@ -39,16 +39,16 @@ export async function insertPendingFixture(
   );
 
   await db.query(
-    `INSERT INTO pending_fixtures (fixture_id, generator_name, seed_hex, markets, closing_time)
+    `INSERT INTO v2_pending_fixtures (fixture_id, generator_name, seed_hex, markets, closing_time)
      VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (fixture_id) DO NOTHING`,
+     ON CONFLICT (fixture_id) DO UPDATE SET markets = EXCLUDED.markets`,
     [fixtureId, fixture.generatorName, fixture.seedHex, marketsJson, fixture.closingTime],
   );
 }
 
 /** Deletes a pending fixture's persisted row once it has settled. */
 export async function deletePendingFixture(db: DbClient, fixtureId: string): Promise<void> {
-  await db.query(`DELETE FROM pending_fixtures WHERE fixture_id = $1`, [fixtureId]);
+  await db.query(`DELETE FROM v2_pending_fixtures WHERE fixture_id = $1`, [fixtureId]);
 }
 
 /**
@@ -59,7 +59,7 @@ export async function deletePendingFixture(db: DbClient, fixtureId: string): Pro
  */
 export async function loadAllPendingFixtures(db: DbClient): Promise<Map<string, PendingFixture>> {
   const result = await db.query<PendingFixtureRow>(
-    `SELECT fixture_id, generator_name, seed_hex, markets, closing_time FROM pending_fixtures`,
+    `SELECT fixture_id, generator_name, seed_hex, markets, closing_time FROM v2_pending_fixtures`,
   );
 
   const map = new Map<string, PendingFixture>();

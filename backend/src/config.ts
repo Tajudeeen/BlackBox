@@ -1,3 +1,4 @@
+import { isAddress } from "ethers";
 export type EngineConfig = {
   rpcUrl: string;
   operatorPrivateKey: string;
@@ -5,7 +6,6 @@ export type EngineConfig = {
   databaseUrl: string;
   closingInSeconds: number;
   pollIntervalMs: number;
-  haltRecoveryMs: number;
 };
 
 function required(name: string): string {
@@ -18,22 +18,18 @@ function required(name: string): string {
 
 /** Loads engine configuration from the environment (see .env.example). */
 export function loadConfig(): EngineConfig {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(required('OPERATOR_PRIVATE_KEY'))) throw new Error('Invalid operator private key');
+  if (!isAddress(required('MARKET_CONTRACT_ADDRESS'))) throw new Error('Invalid market address');
+  for (const [name, fallback, minimum] of [['CLOSING_IN_SECONDS', 1800, 30], ['POLL_INTERVAL_MS', 15000, 1000]] as const) {
+    const value = Number(process.env[name] ?? fallback);
+    if (!Number.isSafeInteger(value) || value < minimum) throw new Error(`Invalid ${name}`);
+  }
   return {
-    rpcUrl: process.env.RPC_URL ?? "http://127.0.0.1:8545",
+    rpcUrl: required("RPC_URL"),
     operatorPrivateKey: required("OPERATOR_PRIVATE_KEY"),
     marketContractAddress: required("MARKET_CONTRACT_ADDRESS"),
-    databaseUrl: process.env.DATABASE_URL ?? "postgres://blackbox:blackbox_dev_only@localhost:5432/blackbox",
+    databaseUrl: required("DATABASE_URL"),
     closingInSeconds: Number(process.env.CLOSING_IN_SECONDS ?? 1800),
     pollIntervalMs: Number(process.env.POLL_INTERVAL_MS ?? 15_000),
-    // How long a generator stays halted after a partial fixture-creation
-    // failure (e.g. the operator wallet running out of gas) before the
-    // engine automatically retries it on its own. Defaults to 2 minutes --
-    // short enough that a transient issue clears itself quickly, long
-    // enough that a genuinely broken config (bad RPC url, wrong contract
-    // address) doesn't retry so fast it spams the chain. A redeploy also
-    // clears the halt immediately, since it's in-memory only -- this
-    // timer only matters if the same process keeps running without
-    // restarting.
-    haltRecoveryMs: Number(process.env.HALT_RECOVERY_MS ?? 120_000),
   };
 }

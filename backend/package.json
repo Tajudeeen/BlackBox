@@ -11,7 +11,8 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "verify:market": "tsx src/verifyMarket.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
