@@ -43,10 +43,10 @@ export async function rememberPendingFixture(
   fixture: PendingFixture,
   db?: DbClient,
 ): Promise<void> {
-  pendingFixtures.set(fixtureId, fixture);
   if (db) {
     await insertPendingFixture(db, fixtureId, fixture);
   }
+  pendingFixtures.set(fixtureId, fixture);
 }
 
 export function getPendingFixture(fixtureId: string): PendingFixture | undefined {
@@ -59,10 +59,10 @@ export function getPendingFixture(fixtureId: string): PendingFixture | undefined
  * (see settleFixture.ts).
  */
 export async function forgetPendingFixture(fixtureId: string, db?: DbClient): Promise<void> {
-  pendingFixtures.delete(fixtureId);
   if (db) {
     await deletePendingFixture(db, fixtureId);
   }
+  pendingFixtures.delete(fixtureId);
 }
 
 export function listPendingFixtureIds(): string[] {

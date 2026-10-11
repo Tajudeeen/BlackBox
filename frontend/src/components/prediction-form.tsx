@@ -12,7 +12,7 @@ import { parseTokenAmount, useOperatorApproval, useTokenDecimals } from "@/lib/u
 // Display-unit cap (BBX, not raw on-chain units). Comfortably below
 // euint64's range even after scaling by 10^decimals, and comfortably
 // above anything a faucet-funded wallet could realistically hold.
-const MAX_PREDICTION_AMOUNT = 1_000_000_000_000;
+const MAX_PREDICTION_AMOUNT = 18_446_744;
 
 export function PredictionForm({
   marketId,
@@ -25,12 +25,12 @@ export function PredictionForm({
   outcomeCount: number;
   onSubmitted: () => void;
 }) {
-  const { address } = useAccount();
+  const { address, chainId } = useAccount();
   const encrypt = useEncrypt();
   const decimals = useTokenDecimals();
   const { isApproved, approve, isPending: isApproving, error: approveError } = useOperatorApproval();
   const { writeContractAsync, data: txHash, isPending: isWriting, error: writeError } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash, chainId: 11155111 });
 
   const [selectedOutcome, setSelectedOutcome] = useState<number | null>(null);
   const [amountInput, setAmountInput] = useState("");
@@ -42,13 +42,13 @@ export function PredictionForm({
   const amountValidationError =
     amountInput.trim() === ""
       ? null
-      : !Number.isFinite(parsedAmount) || parsedAmount <= 0
+      : !Number.isSafeInteger(parsedAmount) || parsedAmount <= 0
         ? "Enter a positive whole number."
         : parsedAmount > MAX_PREDICTION_AMOUNT
           ? `Maximum is ${MAX_PREDICTION_AMOUNT.toLocaleString()} BBX.`
           : null;
   const amount =
-    amountValidationError === null && amountInput.trim() !== "" ? Math.floor(parsedAmount) : null;
+    amountValidationError === null && amountInput.trim() !== "" ? parsedAmount : null;
 
   useEffect(() => {
     if (isConfirmed) onSubmitted();
@@ -56,7 +56,7 @@ export function PredictionForm({
 
   const handleSubmit = async () => {
     setError(null);
-    if (!address || !MARKET_CONTRACT_ADDRESS || selectedOutcome === null || amount === null) return;
+    if (chainId !== 11155111 || !address || !MARKET_CONTRACT_ADDRESS || selectedOutcome === null || amount === null) return;
 
     try {
       setStage("encrypting");
@@ -72,6 +72,7 @@ export function PredictionForm({
 
       setStage("submitting");
       await writeContractAsync({
+        chainId: 11155111,
         address: MARKET_CONTRACT_ADDRESS,
         abi: BLACKBOX_MARKET_ABI,
         functionName: "submitPrediction",
@@ -82,6 +83,7 @@ export function PredictionForm({
           bytesToHex(encrypted.inputProof),
         ],
       });
+      setStage("idle");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
       setStage("idle");
@@ -111,8 +113,8 @@ export function PredictionForm({
         </p>
         <button
           type="button"
-          onClick={() => approve()}
-          disabled={isApproving}
+          onClick={() => { void approve().catch(() => {}); }}
+          disabled={isApproving || chainId !== 11155111}
           className="mt-4 w-full rounded-md bg-bb-yellow px-4 py-3 text-sm font-medium text-bb-black transition-opacity disabled:opacity-40"
         >
           {isApproving ? "Waiting for signature…" : "Approve BLACKBOX"}
@@ -126,7 +128,7 @@ export function PredictionForm({
     <div className="rounded-md border border-bb-line bg-bb-black-soft p-5">
       <h2 className="text-sm font-medium uppercase tracking-wide text-bb-text-dim">Submit a prediction</h2>
       <p className="mt-1 text-xs text-bb-text-dim">
-        Your choice and amount are encrypted before they leave your browser.
+        Your choice and amount are encrypted before they leave your browser. Switch to Sepolia to transact. Insufficient balance records a zero deposit; decrypt the actual deposit after submission.
       </p>
 
       <p className="mt-4 text-xs uppercase tracking-wide text-bb-text-dim">Pick an outcome</p>
@@ -174,7 +176,7 @@ export function PredictionForm({
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={!address || selectedOutcome === null || amount === null || isBusy}
+        disabled={chainId !== 11155111 || !address || selectedOutcome === null || amount === null || isBusy}
         className="mt-4 w-full rounded-md bg-bb-yellow px-4 py-3 text-sm font-medium text-bb-black transition-opacity disabled:opacity-40"
       >
         {submitLabel()}

@@ -7,6 +7,7 @@
  */
 import "dotenv/config";
 
+import { virtualFootball } from "./generators/virtualFootball/index.js";
 import { Pool } from "pg";
 
 import { BlackboxChainClient } from "./chain/client.js";
@@ -22,7 +23,7 @@ async function main() {
   const deps = { chain, db };
 
   console.log("--- creating fixture ---");
-  const fixture = await createFixture(deps, config.closingInSeconds);
+  const fixture = await createFixture(deps, virtualFootball, config.closingInSeconds);
   console.log(fixture);
 
   const pending = getPendingFixture(fixture.fixtureId);
@@ -37,24 +38,24 @@ async function main() {
   console.log(settled);
 
   console.log("--- reading back from chain ---");
-  const winnerInfo = await chain.getMarket(fixture.contractMarketIds.winner);
-  const overUnderInfo = await chain.getMarket(fixture.contractMarketIds.overUnder);
+  const winnerInfo = await chain.getMarket(fixture.contractMarketIds[0]);
+  const overUnderInfo = await chain.getMarket(fixture.contractMarketIds[1]);
   console.log("winner market:", winnerInfo);
   console.log("over/under market:", overUnderInfo);
 
   console.log("--- reading back from database ---");
-  const marketRows = await db.query("SELECT * FROM markets ORDER BY created_at");
-  const eventRows = await db.query("SELECT * FROM simulation_events ORDER BY created_at");
+  const marketRows = await db.query("SELECT * FROM v2_markets ORDER BY created_at");
+  const eventRows = await db.query("SELECT * FROM v2_simulation_events WHERE fixture_id = $1", [fixture.fixtureId]);
   console.log("markets table:", marketRows.rows);
   console.log("simulation_events table:", eventRows.rows);
 
   if (!winnerInfo.resolved || !overUnderInfo.resolved) {
     throw new Error("FAIL: markets were not resolved on chain");
   }
-  if (winnerInfo.winningOutcome !== settled.result.winnerOutcome) {
+  if (winnerInfo.winningOutcome !== virtualFootball.simulate(pending.seedHex).outcomes[0]) {
     throw new Error("FAIL: on-chain winner outcome does not match the engine's computed outcome");
   }
-  if (overUnderInfo.winningOutcome !== settled.result.overUnderOutcome) {
+  if (overUnderInfo.winningOutcome !== virtualFootball.simulate(pending.seedHex).outcomes[1]) {
     throw new Error("FAIL: on-chain over/under outcome does not match the engine's computed outcome");
   }
   if (eventRows.rows.length !== 2 || !eventRows.rows.every((r) => r.seed_reveal)) {

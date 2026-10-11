@@ -40,7 +40,8 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 export default function MarketsPage() {
-  const { markets, isLoading } = useMarkets();
+  const [page, setPage] = useState(0);
+  const { markets, isLoading, error, hasOlder } = useMarkets(page);
   const [activeTab, setActiveTab] = useState<TabId>("football");
 
   const currentTab = TABS.find((t) => t.id === activeTab)!;
@@ -58,6 +59,12 @@ export default function MarketsPage() {
         </p>
       </div>
 
+      <nav aria-label="Market pages" className="mt-5 flex gap-4">
+        <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>Newer</button>
+        <span>Page {page + 1} · 60 markets per page</span>
+        <button disabled={!hasOlder} onClick={() => setPage(p => p + 1)}>Older</button>
+      </nav>
+      {error && <p className="text-red-400">Some market data is unavailable. Refresh or check your RPC connection.</p>}
       {/* Tabs */}
       <div className="mt-6 flex gap-1 rounded-md border border-bb-line bg-bb-black-soft p-1 sm:mt-8">
         {TABS.map((tab) => {
@@ -100,9 +107,7 @@ export default function MarketsPage() {
           <div className="rounded-md border border-bb-line bg-bb-black-soft p-6 text-center lg:col-span-full">
             <p className="text-sm font-medium text-bb-text">Contract not configured</p>
             <p className="mt-1 text-xs text-bb-text-dim">
-              Set{" "}
-              <code className="font-mono">NEXT_PUBLIC_MARKET_CONTRACT_ADDRESS</code> to a deployed
-              BlackboxMarket address.
+              The market connection is not configured yet.
             </p>
           </div>
         )}
@@ -118,11 +123,11 @@ export default function MarketsPage() {
           </>
         )}
 
-        {MARKET_CONTRACT_ADDRESS && !isLoading && filtered.length === 0 && (
+        {MARKET_CONTRACT_ADDRESS && !isLoading && !error && filtered.length === 0 && (
           <div className="rounded-md border border-bb-line bg-bb-black-soft p-6 text-center lg:col-span-full">
             <p className="text-lg">{currentTab.icon}</p>
             <p className="mt-2 text-sm font-medium text-bb-text">
-              No {currentTab.label} markets yet
+              No {currentTab.label} markets on this page
             </p>
             <p className="mt-1 text-xs text-bb-text-dim">
               The engine creates new {currentTab.label.toLowerCase()} markets automatically as part of

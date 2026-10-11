@@ -21,6 +21,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   console.log(`  using BlackboxCoin: `, blackboxCoin.address);
 };
 export default func;
-func.id = "deploy_blackboxMarket"; // id required to prevent reexecution
+func.id = "deploy_blackboxMarket_v2"; // id required to prevent reexecution
 func.tags = ["BlackboxMarket"];
 func.dependencies = ["BlackboxCoin"];

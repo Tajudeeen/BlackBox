@@ -23,10 +23,19 @@ async function main() {
   const db = new Pool({ connectionString: config.databaseUrl });
 
   console.log("[blackbox-backend] simulation engine starting");
-  console.log(`[blackbox-backend] rpc: ${config.rpcUrl}`);
+
   console.log(`[blackbox-backend] market contract: ${config.marketContractAddress}`);
   console.log(`[blackbox-backend] generators: ${GENERATORS.map((g) => g.name).join(", ")}`);
   console.log(`[blackbox-backend] closing in: ${config.closingInSeconds}s`);
+
+  const chainId = await chain.assertReady();
+  const lease = await db.connect();
+  const locked = await lease.query('SELECT pg_try_advisory_lock(7242082) AS locked');
+  if (!locked.rows[0].locked) throw new Error('Another engine owns this database');
+  lease.on('error', () => process.exit(1));
+  await lease.query('INSERT INTO v2_engine_binding (chain_id, market_address) VALUES ($1, $2) ON CONFLICT DO NOTHING', [chainId, config.marketContractAddress.toLowerCase()]);
+  const binding = await lease.query('SELECT chain_id, market_address FROM v2_engine_binding');
+  if (binding.rows[0].chain_id !== chainId || binding.rows[0].market_address !== config.marketContractAddress.toLowerCase()) throw new Error('Database is bound to another chain or market contract');
 
   // Recover any fixtures that were still open when this process last
   // stopped -- without this, a restart silently orphans them (see
@@ -46,7 +55,7 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error("[blackbox-backend] fatal error", error);
+main().catch(() => {
+  console.error("[blackbox-backend] startup failed; check configuration, chain and database");
   process.exitCode = 1;
 });

@@ -1,71 +1,28 @@
-import type { ChainClient } from "../chain/client.js";
-import type { DbClient } from "../db/types.js";
-import { markMarketSettled } from "../db/markets.js";
-import { revealSimulationEvent } from "../db/simulationEvents.js";
-import { getGenerator } from "../generators/registry.js";
-import { forgetPendingFixture, getPendingFixture } from "./pendingStore.js";
-
-export type FixtureDeps = {
-  chain: ChainClient;
-  db: DbClient;
-};
-
-export type SettledFixture = {
-  fixtureId: string;
-  generatorName: string;
-  summary: string;
-};
-
-/**
- * Settles a pending fixture. Idempotent and parallel — checks each
- * market's on-chain resolved status, then resolves all unresolved markets
- * concurrently instead of sequentially. On Sepolia this cuts settlement
- * time from (N × confirmation_time) down to ~1 confirmation time for a
- * fixture with N markets.
- */
-export async function settleFixture(deps: FixtureDeps, fixtureId: string): Promise<SettledFixture> {
+import type { FixtureDeps } from './runFixture.js';
+import { markMarketSettled } from '../db/markets.js';
+import { revealSimulationEvent } from '../db/simulationEvents.js';
+import { getGenerator } from '../generators/registry.js';
+import { commitSeed } from '../generators/virtualFootball/randomness.js';
+import { forgetPendingFixture, getPendingFixture } from './pendingStore.js';
+export async function settleFixture(deps: FixtureDeps, fixtureId: string) {
   const pending = getPendingFixture(fixtureId);
-  if (!pending) {
-    throw new Error(`No pending fixture "${fixtureId}" known to this engine instance`);
-  }
-
+  if (!pending) throw new Error('No pending fixture');
   const generator = getGenerator(pending.generatorName);
   const result = generator.simulate(pending.seedHex);
-
-  if (result.outcomes.length !== pending.markets.length) {
-    throw new Error(
-      `Generator "${generator.name}" returned ${result.outcomes.length} outcomes for ` +
-        `${pending.markets.length} markets -- these must match`,
-    );
+  for (let i = 0; i < pending.markets.length; i++) {
+    const market = pending.markets[i];
+    let state = await deps.chain.getMarket(market.contractMarketId);
+    if (!state.exists || state.commitment.toLowerCase() !== commitSeed(pending.seedHex).toLowerCase() ||
+        state.eventType !== generator.getMarkets()[i].eventType || state.closingTime !== pending.closingTime) throw new Error('Market does not match durable fixture');
+    if (!state.resolved) {
+      if (Math.floor(Date.now() / 1000) >= state.closingTime + 86400) await deps.chain.cancelExpired(market.contractMarketId);
+      else await deps.chain.resolveMarket(market.contractMarketId, pending.seedHex);
+      state = await deps.chain.getMarket(market.contractMarketId);
+    }
+    if (!state.resolved || (!state.cancelled && state.winningOutcome !== result.outcomes[i])) throw new Error('On-chain result mismatch');
+    await markMarketSettled(deps.db, market.marketRowId);
   }
-
-  // Check on-chain status for all markets simultaneously
-  const onChainStatuses = await Promise.all(
-    pending.markets.map((m) => deps.chain.getMarket(m.contractMarketId)),
-  );
-
-  // Resolve all unresolved markets concurrently — no need to wait for one
-  // before starting the next, since they are independent transactions
-  await Promise.all(
-    pending.markets.map((market, i) => {
-      if (!onChainStatuses[i].resolved) {
-        return deps.chain.resolveMarket(market.contractMarketId, result.outcomes[i]);
-      }
-      return Promise.resolve();
-    }),
-  );
-
-  await revealSimulationEvent(deps.db, {
-    fixtureId,
-    seedReveal: pending.seedHex,
-    outcomeSummary: result.summary,
-  });
-
-  await Promise.all(
-    pending.markets.map((market) => markMarketSettled(deps.db, market.marketRowId)),
-  );
-
+  await revealSimulationEvent(deps.db, {fixtureId, seedReveal: pending.seedHex, outcomeSummary: result.summary});
   await forgetPendingFixture(fixtureId, deps.db);
-
-  return { fixtureId, generatorName: generator.name, summary: result.summary };
+  return {fixtureId, generatorName: generator.name, summary: result.summary};
 }

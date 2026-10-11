@@ -2,10 +2,12 @@
 
 import { isZeroHandle, useAllow, useIsAllowed, useUserDecrypt } from "@zama-fhe/react-sdk";
 import Link from "next/link";
+import {useState} from "react";
+import {formatUnits} from "viem";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 
 import { BLACKBOX_MARKET_ABI, MARKET_CONTRACT_ADDRESS } from "@/lib/contract";
-import { eventTypeIcon, eventTypeLabel, outcomeLabel } from "@/lib/marketMeta";
+import { eventTypeIcon, eventTypeLabel } from "@/lib/marketMeta";
 import { useCountdown } from "@/lib/useCountdown";
 
 // How often to re-check the chain for new markets, new positions, or
@@ -55,8 +57,8 @@ function PositionRow({
     ? "Claim"
     : entry.resolved && entry.claimed
       ? decryptedShare !== undefined
-        ? (isWin ? `Won ${decryptedShare.toLocaleString()}` : "Lost")
-        : "Claimed"
+        ? (isWin ? `Entitlement ${formatUnits(decryptedShare, 6)} BBX` : "Zero entitlement")
+        : "View payment details"
       : countdown.isPast
         ? "Awaiting resolution"
         : "Open";
@@ -81,7 +83,7 @@ function PositionRow({
           <p className="mt-0.5 text-sm font-medium text-bb-text truncate">{entry.label}</p>
           {entry.resolved && (
             <p className="mt-0.5 text-xs text-bb-text-dim">
-              Result: {outcomeLabel(entry.eventType, entry.winningOutcome)}
+              Open market to verify result or cancellation and actual payment.
             </p>
           )}
         </div>
@@ -97,7 +99,9 @@ function PositionRow({
 }
 
 function PortfolioContent({ address }: { address: string }) {
-  const { data: nextMarketId, isLoading: isLoadingCount } = useReadContract({
+  const [page, setPage] = useState(0);
+  const { data: nextMarketId, isLoading: isLoadingCount, error: countError } = useReadContract({
+    chainId: 11155111,
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "nextMarketId",
@@ -108,10 +112,13 @@ function PortfolioContent({ address }: { address: string }) {
   });
 
   const count = nextMarketId ?? 0n;
-  const marketIds = Array.from({ length: Number(count) }, (_, i) => BigInt(i));
+  const end = count > BigInt(page * 60) ? count - BigInt(page * 60) : 0n;
+  const start = end > 60n ? end - 60n : 0n;
+  const marketIds = Array.from({ length: Number(end - start) }, (_, i) => start + BigInt(i));
 
-  const { data: marketData, isLoading: isLoadingMarkets } = useReadContracts({
+  const { data: marketData, isLoading: isLoadingMarkets, error: marketError } = useReadContracts({
     contracts: marketIds.map((marketId) => ({
+      chainId: 11155111,
       address: MARKET_CONTRACT_ADDRESS,
       abi: BLACKBOX_MARKET_ABI,
       functionName: "getMarket" as const,
@@ -123,8 +130,9 @@ function PortfolioContent({ address }: { address: string }) {
     },
   });
 
-  const { data: positionData, isLoading: isLoadingPositions } = useReadContracts({
+  const { data: positionData, isLoading: isLoadingPositions, error: positionError } = useReadContracts({
     contracts: marketIds.map((marketId) => ({
+      chainId: 11155111,
       address: MARKET_CONTRACT_ADDRESS,
       abi: BLACKBOX_MARKET_ABI,
       functionName: "getPosition" as const,
@@ -194,6 +202,12 @@ function PortfolioContent({ address }: { address: string }) {
     { enabled: canDecryptHistory },
   );
 
+  const navigation = <nav aria-label="Portfolio pages" className="flex gap-4 my-4">
+    <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>Newer</button>
+    <span>Page {page + 1} · 60 markets per page</span>
+    <button disabled={start === 0n} onClick={() => setPage(p => p + 1)}>Older</button>
+  </nav>;
+  if (countError || marketError || positionError || marketData?.some(x => x.status === 'failure') || positionData?.some(x => x.status === 'failure')) return <div>{navigation}<p>Portfolio data unavailable. Refresh or check your RPC connection.</p></div>;
   if (isLoading) {
     return (
       <div className="space-y-3 mt-6">
@@ -207,7 +221,7 @@ function PortfolioContent({ address }: { address: string }) {
   if (positions.length === 0) {
     return (
       <div className="mt-8 rounded-md border border-bb-line bg-bb-black-soft p-8 text-center">
-        <p className="text-sm font-medium text-bb-text">No positions yet</p>
+        {navigation}<p className="text-sm font-medium text-bb-text">No positions on this page</p>
         <p className="mt-1 text-xs text-bb-text-dim">
           Submit a prediction on any open market to see your activity here.
         </p>
@@ -223,6 +237,7 @@ function PortfolioContent({ address }: { address: string }) {
 
   return (
     <div className="mt-6 space-y-8">
+      {navigation}
       {unclaimed.length > 0 && (
         <section>
           <h2 className="text-xs font-medium uppercase tracking-wide text-bb-yellow mb-3">
@@ -262,7 +277,7 @@ function PortfolioContent({ address }: { address: string }) {
                 disabled={isAllowing}
                 className="text-xs font-medium text-bb-yellow underline-offset-4 hover:underline disabled:opacity-50"
               >
-                {isAllowing ? "Signing…" : "Show won/lost"}
+                {isAllowing ? "Signing…" : "Decrypt entitlement"}
               </button>
             )}
             {isAllowed && isDecryptingHistory && (
@@ -293,8 +308,7 @@ export default function PortfolioPage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-medium text-bb-text">Portfolio</h1>
         <p className="text-sm text-bb-text-dim">
-          Every market you have submitted a prediction to. Only you can see this — your predictions
-          and amounts are encrypted on chain.
+          Your participation is public. Choices and amounts are encrypted. Entitlement is not proof of payment; open a market to decrypt payment evidence.
         </p>
       </div>
 
@@ -314,7 +328,7 @@ export default function PortfolioPage() {
       )}
 
       {isConnected && address && MARKET_CONTRACT_ADDRESS && (
-        <PortfolioContent address={address} />
+        <PortfolioContent key={address} address={address} />
       )}
     </main>
   );

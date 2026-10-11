@@ -30,8 +30,9 @@ const POLL_INTERVAL_MS = 5_000;
  * in-flight design); a market count in the thousands would want an
  * indexer instead of multicalling every id on each page load.
  */
-export function useMarkets() {
-  const { data: nextMarketId, isLoading: isLoadingCount } = useReadContract({
+export function useMarkets(page = 0) {
+  const { data: nextMarketId, isLoading: isLoadingCount, error: countError } = useReadContract({
+    chainId: 11155111,
     address: MARKET_CONTRACT_ADDRESS,
     abi: BLACKBOX_MARKET_ABI,
     functionName: "nextMarketId",
@@ -42,12 +43,15 @@ export function useMarkets() {
   });
 
   const count = nextMarketId ?? 0n;
-  const marketIds = Array.from({ length: Number(count) }, (_, i) => BigInt(i));
+  const end = count > BigInt(page * 60) ? count - BigInt(page * 60) : 0n;
+  const start = end > 60n ? end - 60n : 0n;
+  const marketIds = Array.from({ length: Number(end - start) }, (_, i) => start + BigInt(i));
 
-  const { data, isLoading: isLoadingMarkets } = useReadContracts({
+  const { data, isLoading: isLoadingMarkets, error: marketsError } = useReadContracts({
     contracts: marketIds.map(
       (marketId) =>
         ({
+          chainId: 11155111,
           address: MARKET_CONTRACT_ADDRESS,
           abi: BLACKBOX_MARKET_ABI,
           functionName: "getMarket",
@@ -87,5 +91,5 @@ export function useMarkets() {
     .filter((m): m is MarketSummary => m !== null && m.exists)
     .reverse(); // newest first
 
-  return { markets, isLoading: isLoadingCount || isLoadingMarkets };
+  return { markets, hasOlder: start > 0n, error: countError || marketsError || data?.some(r => r.status === "failure"), isLoading: isLoadingCount || isLoadingMarkets };
 }
